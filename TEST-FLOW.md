@@ -1,21 +1,73 @@
 # DaVinci Prior Auth Mock — Complete End-to-End Test Flow
 A step-by-step script that a user can follow, verbatim, to reproduce everything
-we just validated (the API path + the DTR gap, with deterministic assertions).
+we validated: the frozen API path (`demo.sh`, 12 assertions) **and** the interactive
+browser path through to a PAS decision (`e2e-browser.py`, 14 assertions).
 
 This assumes you're in the project directory and the shell is bash/zsh. All
 commands are idempotent and avoid /tmp where possible.
 
+> **If you just cloned this repo, start at §0.** Nothing under `repos/` or
+> `runtime/` is in git — 1.2 GB of upstream clones and a 337 MB toolchain are
+> excluded on purpose, and re-created by `bin/provision.sh` from `versions.lock`.
+> Skipping §0 and running `bin/up.sh` will fail on a missing CDS-Library.
+
 ## Prerequisites
 1. Linux (or WSL2) environment. The `/mnt/c/...` mount is case-insensitive and slow — normal here.
-2. `ss`, `curl`, `python3`, `node`, `java` are available.
-3. Run commands from: `/mnt/c/Users/<you>/Downloads/davinci-mock`
+2. `ss`, `curl`, `python3`, `node` (major 22), `java` are available. `bin/provision.sh` checks each.
+3. Enough disk for the toolchain: **~2.5 GB** for `runtime/` (Temurin JDK 17 + Maven) and
+   `repos/` (1.2 GB). This checkout was developed on a 100 %-full `C:`, which is why the VSAC
+   cache and Keycloak both live on ext4 instead — see §12 and `bin/env.sh`.
+4. Run commands from: `/mnt/c/Users/<you>/Downloads/davinci-mock`
+
+## 0. Provision the inputs (fresh clone only)
+
+This repo is the *orchestration*, not the payload. The six upstream repos, the JDK, Maven and
+Keycloak are all excluded from git and re-created from `versions.lock`, which pins every one of them
+by full 40-char SHA with a checksum.
+
+```bash
+./bin/provision.sh            # clone what is missing, verify what is present
+./bin/provision.sh --check    # verify only, never downloads; exit 1 if anything is missing
+```
+
+A healthy tree looks like this — the first run of a fresh clone reports 8 missing:
+
+```
+== 1/4  upstream clones ==
+  ok   CDS-Library             560403a97a4c50248713fad90314faaeeff7977d
+  ok   CRD                     43547c4e69052df4d3532972e4bd03f8d5317d13
+  ok   crd-request-generator   87e98bf9af4fb528b624171edbe702880e325c59
+  ok   dtr                     7acf79a6f89bfe9e88c30e9d4b531f647ce09c41
+  ok   prior-auth              848f28c11d8efb4e253b70cfbbc485acf9acd1a0
+  ok   test-ehr                e3f07ce4d81063e99e475cccaedba93becb8ef1d
+== 2/4  JDK 17.0.20.1+1  ->  runtime/jdk17 ==   ok present Temurin-17.0.20.1+1
+== 3/4  Maven 3.9.9  ->  runtime/maven ==      ok present Apache Maven 3.9.9
+== 4/4  Keycloak 26.7.4 + Node 22 + JDK 21 ==   ok present at /opt/keycloak
+```
+
+Three things it deliberately does *not* do, because each has bitten this project:
+
+- **It does not install Node or the JDK 21.** Both are system-level here; it asserts them and tells
+  you the `apt-get` line if absent. Keycloak needs **JDK 21** even though the stack runs on 17,
+  because `kc.sh` runs `$JAVA_HOME/bin/java` and `bin/env.sh` points `JAVA_HOME` at 17 — `bin/up.sh`
+  overrides it per-service for exactly that reason.
+- **It does not place the CDS-Library.** Where each service expects it is service-specific and
+  getting it wrong is a hard boot exit; that logic is in `bin/up.sh`, not here.
+- **It does not reuse `bin/clone.sh`'s "already cloned" answer.** `clone.sh` exits 0 for a checkout
+  at *any* commit, so a stale clone is invisible to it. `provision.sh` re-verifies all six SHAs
+  itself and, on a mismatch, prints the exact `git fetch` line to repair it. Run `--check` after any
+  manual `git` work inside `repos/`.
+
+**Pin discipline:** `versions.lock` is the run version. Do not bump a SHA to "catch up with
+upstream" without re-running both drivers in §5/§6 and making a new tag. The published run version
+is `run-2026-09-27`.
 
 ## 1. Clean slate (optional but safest)
 ```bash
 cd /mnt/c/Users/<you>/Downloads/davinci-mock
 ./bin/down.sh --purge
 ```
-Expected: all five stack ports become free, on-disk PAS/DTR state purged.
+Expected: all six stack ports become free, on-disk PAS/DTR state purged.
 
 ## 2. Cold start (build only if needed, then launch all six)
 ```bash
@@ -72,7 +124,7 @@ curl -s http://localhost:3005/clients | python3 -m json.tool
 Expected: all 200s; `order-sign-crd` count >=1; Rules rows >=40 (header + 39); Clients rows >=2; DTR `/clients` non-empty.
 
 ## 4. Interactive browser path (the mock EHR UI) — VERIFIED WORKING in Chromium
-Open in a browser: `http://localhost:3001/` (all five services bind `0.0.0.0`, so this also
+Open in a browser: `http://localhost:3001/` (all six services bind `0.0.0.0`, so this also
 works from Windows/WSL2 host browser via localhost). Exact sequence, as driven end-to-end:
 
 1. Click **`PATIENT SELECT`**. A modal lists patients (pat015, pat1234, pat014, pat016, pat013…).
@@ -358,6 +410,10 @@ diskpart
 | Keycloak says *"Invalid parameter: redirect_uri"* | test-ehr's `security.auth_redirect_host` was set to a bare hostname | leave it EMPTY — `AuthProxy.java:170` then derives `scheme://host:port` from the incoming request, which is correct for any host |
 | keycloak will not start on JDK 17 | `env.sh` pins `JAVA_HOME` to the project's JDK 17, and `kc.sh` runs `$JAVA_HOME/bin/java` | `up.sh` overrides `JAVA_HOME` to the system JDK 21 for that service only |
 | `/env-config` names localhost but you opened the UI by IP | `REACT_APP_*` never reached crg, so it fell back to the build-time baked values | pass them through in `up.sh`; check `curl :3001/env-config` (§11) |
+| `up.sh` fails on a missing CDS-Library or JDK | fresh clone: `repos/` and `runtime/` are not in git | `./bin/provision.sh` (§0), then `./bin/provision.sh --check` to confirm |
+| `provision.sh` reports a SHA mismatch | someone moved a checkout in `repos/` by hand | `clone.sh`'s "already cloned" cannot detect this; take the `git fetch` line `provision.sh` prints |
+| `git push` → `could not read Username for 'https://github.com'` | `git` has no credential helper and no TTY to prompt on | `git config --local credential.helper '!gh auth git-credential'` — repo-local on purpose, so your global `~/.gitconfig` is not rewritten |
+| `git status` dirty on 2 PNGs after `e2e-browser.py` | expected: `08`/`09` render a runtime Claim id and a wall clock | `git checkout -- docs/screenshots/e2e/`; not a regression |
 
 ## 9. Port map (for firewalls / conflicts)
 | Service | Port | What it is |
@@ -377,8 +433,15 @@ diskpart
 
 ## 11. Reaching the stack from another machine (`0.0.0.0`)
 
-All five services bind `0.0.0.0` (verify: `ss -ltnp | grep -E '8080|8090|9015|3001|3005'`), and
-`env.sh` adds every global IPv4 in every stack port to `CORS_ORIGINS`. That is necessary but
+All six services bind `0.0.0.0`. Verify by deriving the port list rather than hardcoding it — a
+hardcoded list is exactly how `:8180` came up "missing" once already, because Keycloak was not in
+the string:
+
+```bash
+source bin/env.sh && ss -ltnp | grep -E ":($(echo "$STACK_PORTS" | tr '|' '|'))[[:space:]]"
+```
+
+`env.sh` also adds every global IPv4 in every stack port to `CORS_ORIGINS`. That is necessary but
 **not sufficient** — the browser decides which host to call, and the UI is handed its backend
 URLs at runtime.
 
