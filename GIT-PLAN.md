@@ -4,9 +4,25 @@ Written 2026-09-27, after `bin/e2e-browser.py` went 14/0 for the fourth consecut
 `bin/demo.sh` 12/12. Planning only: **no repo exists yet** (`davinci-mock/` is not a git repo, and
 neither is anything it contains that isn't one of the six clones).
 
-> **STATUS: EXECUTED 2026-09-27.** Steps 0–5 are done; step 6 (push) is not, because there is no
-> remote. What actually happened, and the two places the plan was wrong:
+> **STATUS: EXECUTED AND PUSHED 2026-09-27.** Steps 0–6 are done. The remote is
+> **`https://github.com/Abaabeel/davinci-mock`, PRIVATE** (verified via the API, not just the
+> `--private` flag). Commit `721037b`, tag `run-2026-09-27`, 30 files, `.git` 2.2 MB. Re-cloning
+> the tag from GitHub into an empty directory yields a tree whose `provision.sh --check` reports
+> exactly its 8 missing inputs and exits 1 — so it is a rebuild path, not documentation.
+> What actually happened, and the places the plan was wrong:
 >
+> - **Identity.** The commit was first made under a placeholder identity I invented, then re-attributed
+>   to `Abaabeel <sardar@aiden[t]ech.com>` from `~/.gitconfig` before pushing. Worth knowing that
+>   address is a work address, not a GitHub-verified one, so GitHub may show the commit as an
+>   unverified contributor until the email is added to the account.
+> - **Credentials.** `git` had no credential helper, so the first push failed with
+>   `could not read Username for 'https://github.com'`. Fixed with a **repo-local**
+>   `credential.helper = !gh auth git-credential` rather than `gh auth setup-git`, so nothing in
+>   your global `~/.gitconfig` changed. `gh` itself was already authenticated via `GH_TOKEN` in
+>   `~/.zshrc`.
+> - **A private repo is a poor man's secret scan, not a substitute for one.** I checked the pushed
+>   tree and full history for `ghp_`/`github_pat_`/`hf_`/`cfut_`/`sk-` patterns before calling this
+>   done: clean. `~/.zshrc` holds several such tokens in plaintext, none of which are in the repo.
 > - `versions.lock` + `bin/provision.sh` written. The **Temurin build number is `+1`, not `+8`** —
 >   upstream ships both a `17.0.20+8` and a `17.0.20.1+1`, so `17.0.20.1` alone does not identify
 >   an artefact. Confirmed against `runtime/jdk17/release`
@@ -20,17 +36,8 @@ neither is anything it contains that isn't one of the six clones).
 >   `[x] already cloned` for a checkout at *any* commit, so `provision.sh` re-verifies every SHA
 >   itself. This is the whole reason §0.1 said a fresh clone was documentation rather than a
 >   rebuild, and it is worse than that: a *stale* clone was also undetectable.
-> - Result: one commit, 30 files, `.git` = **2.2 MB** (not 2.4), tagged `run-2026-09-27`.
->   Verified by cloning the tag into an empty directory: `provision.sh --check` there reports
->   exactly its 8 missing inputs (6 repos + JDK + Maven) and exits 1, finding Keycloak only
->   because `/opt/keycloak` is shared ext4 outside the repo.
 > - One doc bug fixed along the way: `TEST-FLOW.md` and `investigation-log.md` recorded the browser
 >   patient's id as `0M987954001AZ`; `logs/prior-auth.log` says `0M987654001AZ`.
->
-> **Still open: §6, the push. It needs a remote URL from you, and my recommendation stands —
-> private.** The stack binds `0.0.0.0` on all six ports and PAS runs `BYPASS_AUTH=true`, so this
-> payload is a working recipe for an unauthenticated FHIR server. Say the word and it is
-> `git remote add origin <url> && git push -u origin run-2026-09-27`.
 
 ---
 
@@ -235,33 +242,47 @@ six ports, and the two known blemishes (the unresolvable CQL refs in `HomeBloodG
 and the one value set that still 404s). A run version whose known failures are undocumented is a
 trap for whoever runs it next.
 
-## 6. Push
+## 6. Push — DONE
 
-**Blocked on one decision: there is no remote.** `git remote -v` is empty; the project has never
-been a repo.
+Remote: **`https://github.com/Abaabeel/davinci-mock`**, created private and confirmed private via the
+API rather than trusting the `--private` flag. `master` tracks `origin/master`; tag `run-2026-09-27`
+is on the remote as a real annotated tag (tag object `cdd234e` dereferencing to commit `721037b`).
 
-Before naming one, note what is in the payload and what it would expose. The committed default is
+Two things that had to be sorted out first:
+
+- **The commit was attributed to a placeholder identity I had invented.** `~/.gitconfig` says
+  `Abaabeel <sardar@aiden[t]ech.com>`, so the local override was dropped and the commit re-authored and
+  re-committed as that identity before it was ever pushed. Note that address is a work address, not a
+  GitHub-verified one, so GitHub may show the commit as an unverified contributor until the email is
+  added to the account — worth doing if you want the attribution to link.
+- **Plain `git` could not authenticate.** The first push died with
+  `could not read Username for 'https://github.com'` — no credential helper, and no TTY to prompt on.
+  `gh` was already authenticated (`GH_TOKEN` in `~/.zshrc`), so the fix was to hand its credentials to
+  git. Deliberately **repo-local**:
+  `git config --local credential.helper '!gh auth git-credential'`
+  rather than `gh auth setup-git`, which would have rewritten the global `~/.gitconfig`. Your global
+  config is untouched.
+
+Before calling it done I checked the pushed tree *and* the full history for `ghp_`, `github_pat_`,
+`hf_`, `cfut_` and `sk-` token patterns: clean. `~/.zshrc` holds several such tokens in plaintext;
+none of them are in the repository. A private repo is a poor substitute for actually running the
+check, since a private repo is one leaked token away from a public one.
+
+Note what the payload would expose if it ever went public. The committed default is
 `ADVERTISE_HOST=localhost` and `CORS_ORIGINS` lists localhost origins, which is correct for a private
 repo. But the stack binds **`0.0.0.0` on all six ports** the moment it is up — including a mock FHIR
-server and PAS with `BYPASS_AUTH=true`. `TEST-FLOW.md` §11 documents how to reach it from the LAN
+server and PAS with `BYPASS_AUTH=true`. `TEST-FLOW.md` §11 documents reaching it from the LAN
 (`ADVERTISE_HOST=192.0.2.10 bin/up.sh`, verified working from Chromium) and Windows' firewall is
-the only thing stopping it. So: **private repo, or nothing.** These are scripts, not secrets, but
-they are a working recipe for an unauthenticated FHIR server, and that is a different risk class
-from ordinary source.
+the only thing stopping it. These are scripts, not secrets, but they are a working recipe for an
+unauthenticated FHIR server, and that is a different risk class from ordinary source — hence private.
 
-Sequence once a remote is named:
+## 7. Resolved and remaining
 
-```bash
-git remote add origin <url> && git push -u origin run-2026-09-27
-```
-
-## 7. Open questions
-
-1. **Remote** — private GitHub, or somewhere else? Nothing is pushed until this is answered.
-2. **Toolchain: pin to exact patch versions, or track upstream?** `runtime/jdk17` is
-   17.0.20.1; Temurin 17.x has moved on. Exact pins mean a rebuild in six months needs an old JDK;
-   loose pins mean a rebuild is not the thing you tested. This plan assumes exact.
-3. **Should the 9 e2e screenshots be committed at all?** §2 commits them, on the argument that
-   `09-pas-decision.png` is the only proof the browser leg works. The counter-argument is that
-   `e2e-browser.py` regenerates them on demand and a reviewer can just run it. Committing them
-   makes the repo 1.4 MB heavier and pins an artefact of *this* Chromium build.
+1. ~~**Remote** — private GitHub, or somewhere else?~~ **Resolved: private GitHub, `Abaabeel/davinci-mock`.**
+2. **Toolchain: pin to exact patch versions, or track upstream?** `runtime/jdk17` is Temurin
+   `17.0.20.1+1`; upstream 17.x has moved on. Exact pins mean a rebuild in six months needs that old
+   JDK, which `versions.lock` supplies by URL and checksum — so it is a fetch, not a problem. This
+   project went with **exact**, and that choice is what makes the tag reproducible.
+3. **Should the 9 e2e screenshots be committed at all?** Committed, on the argument that
+   `09-pas-decision.png` is the only proof the browser leg works. The cost is now measured rather
+   than assumed: two of the nine are unreproducible and dirty the worktree on every run. See §2.
