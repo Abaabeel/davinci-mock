@@ -1,0 +1,30 @@
+# Upstream clones. Re-created by bin/provision.sh from versions.lock -- these are
+# 1.2 GB of other people's code, pinned to exact SHAs, and gitignoring the
+# directories outright means git never even descends into them.
+/repos/
+
+# Toolchain: Temurin JDK 17 + Maven, ~337 MB, re-downloadable from versions.lock
+# with checksum verification.
+/runtime/
+
+# Runtime state. logs/ and pids/ are written by up.sh; state/ holds demo
+# by-products from demo.sh.
+/logs/
+/pids/
+/state/
+
+# The e2e PNGs ARE committed -- they are the only artefact of a browser-driven
+# claim, and e2e-browser.py clears this directory on every run so a committed set
+# is always one coherent pass. The generated diagnostics beside them are not.
+docs/screenshots/e2e/*.html
+docs/screenshots/e2e/*.json
+docs/screenshots/e2e/*.txt
+
+# Belt and braces. Everything these would match today is already excluded above,
+# but they are exactly what gets staged by accident when up.sh is run from
+# inside a clone.
+node_modules/
+build/
+dist/
+.gradle/
+*.class

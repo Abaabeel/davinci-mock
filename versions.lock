@@ -1,0 +1,79 @@
+# versions.lock — everything the stack is built from
+#
+# The single source of truth for the run version. SOURCES.md and PLAN.md describe
+# *how* these were chosen; this file is what bin/provision.sh actually reads, so
+# the pins cannot drift away from the prose.
+#
+# Format, deliberately boring and machine-parseable:
+#   [repos]    name <TAB> github-org/repo <TAB> full-40-char-sha
+#   [tooling]  key=value
+#   '#' starts a comment; blank lines are ignored.
+#
+# Why this file exists at all: the six SHAs used to live only in markdown tables,
+# and nothing in bin/ ever called bin/clone.sh. A fresh clone of this repo was
+# therefore documentation, not a rebuild. See GIT-PLAN.md §0.1.
+#
+# Do not hand-edit a SHA to "catch up with upstream". Changing a line here is a
+# change to the run version: re-run both drivers, then make a new annotated tag.
+# That is the whole point of pinning.
+
+[repos]
+# name                  org/repo                        sha
+CDS-Library             HL7-DaVinci/CDS-Library         560403a97a4c50248713fad90314faaeeff7977d
+CRD                     HL7-DaVinci/CRD                 43547c4e69052df4d3532972e4bd03f8d5317d13
+crd-request-generator   HL7-DaVinci/crd-request-generator 87e98bf9af4fb528b624171edbe702880e325c59
+dtr                     HL7-DaVinci/dtr                 7acf79a6f89bfe9e88c30e9d4b531f647ce09c41
+prior-auth              HL7-DaVinci/prior-auth          848f28c11d8efb4e253b70cfbbc485acf9acd1a0
+test-ehr                HL7-DaVinci/test-ehr            e3f07ce4d81063e99e475cccaedba93becb8ef1d
+
+[tooling]
+# --- JDK for CRD, PAS and test-ehr: 17, not 21 ---
+# Pinned to an exact build, not "17". Temurin ships 17.0.20.1 at build +1 and
+# also has a *different* 17.0.20+8, so "17.0.20.1" alone does not identify an
+# artefact. Verified against runtime/jdk17/release:
+#   IMPLEMENTOR="Eclipse Adoptium"  IMPLEMENTOR_VERSION="Temurin-17.0.20.1+1"
+jdk17_version=17.0.20.1
+jdk17_build=1
+jdk17_url=https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1.tar.gz
+jdk17_sha256=3808d1d15e3ec6bd5b84057fb5d84c33d8a1536a258146bcea2e603fc726e08e
+jdk17_archive_root=OpenJDK17U-jdk_x64_linux_hotspot_17.0.20.1_1
+# The archive's top-level dir name. It does NOT match the version, so extracting
+# to runtime/ and expecting runtime/jdk17 to appear is wrong by default.
+jdk17_dest=runtime/jdk17
+
+# --- Maven 3.9.9 ---
+# test-ehr ships no mvnw, so this is not optional.
+# archive.apache.org, not dlcdn: dlcdn only carries current releases, and 3.9.9
+# will eventually fall out of it, which would silently break provisioning.
+maven_version=3.9.9
+maven_url=https://archive.apache.org/dist/maven/maven-3/3.9.9/binaries/apache-maven-3.9.9-bin.tar.gz
+maven_sha512=a555254d6b53d267965a3404ecb14e53c3827c09c3b94b5678835887ab404556bfaf78dcfe03ba76fa2508649dca853
+maven_archive_root=apache-maven-3.9.9
+maven_dest=runtime/maven
+
+# --- Node 22: required, not pinned to a tarball ---
+# dtr, crg and test-ehr all build with npm, and none of them ship a pinned node
+# in a form that survives a fresh machine. Deliberately NOT downloaded here: it
+# is a ~50 MB install via a version manager, and hardcoding one would pin a
+# transitive toolchain nobody audited. Recorded as a requirement instead, and
+# bin/provision.sh asserts the major version is 22.
+node_major=22
+
+# --- Keycloak 26.7.4: required by the DTR hop, and NOT in this folder ---
+# It lives at $KEYCLOAK_HOME (default /opt/keycloak) on ext4, because C: is at
+# 100% and the zip plus the H2 data dir have no business landing there.
+# JDK 21 is mandatory and is separate: kc.sh runs $JAVA_HOME/bin/java, and
+# bin/env.sh otherwise points JAVA_HOME at JDK 17, so up.sh overrides it
+# per-service. Provisioning the *distribution* is here; the JDK 21 is a
+# system package (apt install openjdk-21-jdk-headless) and is only checked.
+keycloak_version=26.7.4
+keycloak_url=https://github.com/keycloak/keycloak/releases/download/26.7.4/keycloak-26.7.4.zip
+keycloak_sha256=a286e98b4296d4e75ee88d8527c7cd463b307caa022f088c9f22cffccc741fa1
+# Java major version kc.sh needs, independent of the stack's own JDK 17.
+keycloak_java_major=21
+
+# --- PAS decision timer ---
+# Every PENDING -> GRANTED in the logs is exactly +DELAY ms. It is a config
+# value, not a build input, but it is the difference between a demo that shows
+# a real state transition and one that looks instant. In bin/env.sh.
+pas_delay_ms=15000
