@@ -259,7 +259,45 @@ jobs:
             echo "::error::documentation still says the repository is private"
             exit 1
           fi
-          echo "ok   no stale private-repo claims"
+            echo "ok   no stale private-repo claims"
+
+      - name: The non-root install paths are documented
+        # env.sh deliberately puts three paths outside the project folder, because
+        # the checkout may sit on a slow or small filesystem:
+        #   KEYCLOAK_HOME      -> /opt/keycloak
+        #   GRADLE_USER_HOME   -> /root/.cache/davinci-mock/gradle
+        #   VSAC_CACHE_DIR     -> /root/.cache/davinci-mock/vsac-cache
+        # All three are root-owned, and provision.sh does a bare mkdir/mv with no
+        # privilege handling. So a normal user who follows the README without an
+        # override dies on the Keycloak step with a bare "Permission denied".
+        #
+        # That is not hypothetical: the first version of this repository was
+        # certified entirely as uid 0, so the gap survived a green run, twelve
+        # commits and an anonymous clone. The docs described the experience of the
+        # box they were written on rather than the box a reader is on.
+        #
+        # Fixed-string matching on the export lines, for the reason the guard above
+        # uses it: a shape or regex here would either miss a reworded export or
+        # start matching this file. It cannot do either.
+        run: |
+          # The success test is the emptiness of $missing, not an exit code. That
+          # is deliberate: five guards in this file were written as `if grep ...
+          # then fail; fi`, and grep exits 2 when it cannot read the tree, which
+          # `if` treats as 1 -- so a scan that never ran reported success.
+          # Accumulating the names sidesteps the question entirely. Note also
+          # that a missing README makes grep exit 2, which lands in $missing and
+          # fails the step, rather than being read as "nothing to check".
+          missing=""
+          for var in KEYCLOAK_HOME GRADLE_USER_HOME VSAC_CACHE_DIR; do
+            grep -qF "export $var=" README.md || missing="$missing $var"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::README does not tell a non-root user to override:$missing"
+            echo "  these default under /opt or /root, so provisioning fails for"
+            echo "  anyone not running as root. See README.md Step 1b."
+            exit 1
+          fi
+          echo "ok   all three non-root paths are documented in the README"
 
       - name: Every guard is proven able to fail
         # A guard that has only ever passed is indistinguishable from a broken

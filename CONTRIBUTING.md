@@ -57,7 +57,7 @@ Do not push a change to CI and find out whether it works from a failure email. B
 run the identical commands, locally, against a throwaway snapshot of the tree:
 
 ```bash
-./bin/ci-local.sh       # all 13 steps, each reported separately
+./bin/ci-local.sh       # all 14 steps, each reported separately
 ./bin/ci-selftest.sh    # plants one leak per guard, asserts each is caught
 ```
 
@@ -72,6 +72,10 @@ and five treated a `grep` error as a clean result. Each is written up in that sc
 header, because the pattern repeats: **a guard that scans a directory containing itself must
 be tested against that directory, not against a list of strings.** That applies to the test
 data too, which is why the planted leaks in `ci-selftest.sh` are assembled from fragments.
+
+Not every guard fails by something being *added*, though. The non-root-path guard fails when
+a line is absent, so its case deletes one — an `!!` marker in the case table. If you add a
+guard whose failure mode is a missing thing, add a deleting case; appending cannot test it.
 
 If you add a guard, add a case for it. A guard with no case is a guard nobody has tested.
 

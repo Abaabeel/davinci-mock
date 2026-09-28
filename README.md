@@ -26,12 +26,23 @@ slot.
 ## Quick start
 
 Requires **Ubuntu 24.04 LTS**, **Node 22**, and a system **JDK 21** for Keycloak. Allow
-~2.5 GB of disk and 7 GB of RAM. First start takes 20–40 minutes; every run after that is
+~3 GB of disk and 7 GB of RAM. First start takes 20–40 minutes; every run after that is
 about one.
 
 ```bash
 # 0. system prerequisites
 sudo apt-get install -y openjdk-21-jdk-headless git curl iproute2 python3 unzip
+# Node 22 from nvm/fnm/asdf — see Requirements. provision.sh asserts the major and
+# prints what it found, so a wrong one fails immediately rather than as opaque ESM errors.
+
+# 0b. REQUIRED unless you are root: three paths default to /opt and /root, which a
+#     normal user cannot write. Skip this and provisioning dies with a bare
+#     "Permission denied" on the Keycloak step, then again on the Gradle cache.
+if [ "$(id -u)" -ne 0 ]; then
+  export KEYCLOAK_HOME="$HOME/.local/keycloak"
+  export GRADLE_USER_HOME="$HOME/.cache/gradle"
+  export VSAC_CACHE_DIR="$HOME/.cache/vsac"
+fi
 
 # 1. get the code
 git clone https://github.com/Abaabeel/davinci-mock.git
@@ -47,7 +58,10 @@ cd davinci-mock
 
 # 4. drive it
 ./bin/demo.sh                              # 12 assertions, API only  -> 12/12
-./bin/e2e-browser.py                       # 14 assertions, real browser -> 14/14
+
+# 4b. the browser driver needs Playwright, which the stack itself does not:
+pip install playwright && playwright install chromium --with-deps
+python3 bin/e2e-browser.py                # 14 assertions, real browser -> 14/14
 ```
 
 Then open **<http://localhost:3001/>** and follow
@@ -195,12 +209,27 @@ Three upstream services from `prior-auth/docker-compose.yml` are intentionally e
 | `bash`, `git`, `curl`, `ss` (iproute2), `python3`, `unzip` | — | all used by `bin/` |
 | **Node.js** | major **22** | asserted by `provision.sh`; runs dtr + crg. Neither upstream `package.json` declares `engines`, so the wrong major fails as opaque ESM errors |
 | **JDK 21** | 21 | **Keycloak only** — `kc.sh` runs `$JAVA_HOME/bin/java`. `sudo apt-get install -y openjdk-21-jdk-headless` |
-| **Disk** | ~2.5 GB for `repos/` + `runtime/`, plus headroom | `repos/` ≈ 1.2 GB, `runtime/` ≈ 337 MB, Keycloak ≈ 190 MB |
+| **Disk** | ~3 GB for `repos/` + `runtime/`, plus headroom | `repos/` ≈ 1.2 GB, `runtime/` ≈ 337 MB, Keycloak ≈ 190 MB, plus npm/Gradle caches |
 | **RAM** | 7 GB total is the working minimum | per-JVM heap caps are set in `bin/env.sh`; see the table below |
+| **Root** | not required, but you must redirect three paths | as root, nothing to do. Otherwise set `KEYCLOAK_HOME`, `GRADLE_USER_HOME` and `VSAC_CACHE_DIR` — see [Step 1b](#step-1b-not-running-as-root-redirect-three-paths) |
 
 **The JDK for CRD, PAS and test-ehr is provisioned for you** — Temurin
 `17.0.20.1+1` unpacked to `runtime/jdk17`, checksum-verified, nothing installed
 system-wide. You do not need a system JDK 17.
+
+Three paths are the exception, because they are deliberately kept *off* the project folder
+(the checkout may be on a slow or small filesystem — see
+[First run is slow](#first-run-is-slow-and-that-is-the-filesystem)):
+
+| Variable | Default | Why it is outside |
+|---|---|---|
+| `KEYCLOAK_HOME` | `/opt/keycloak` | 190 MB unpacked; would be wiped by `bin/clone.sh` |
+| `GRADLE_USER_HOME` | `/root/.cache/davinci-mock/gradle` | tens of thousands of small files |
+| `VSAC_CACHE_DIR` | `/root/.cache/davinci-mock/vsac-cache` | 1.5 MB of terminology, wiped by `bin/clone.sh` |
+
+**As root, all three work as-is. As anyone else, override all three or provisioning fails**
+with a bare `Permission denied`. The trailing slash on `VSAC_CACHE_DIR` is load-bearing but
+`bin/env.sh` adds it for you — do not strip it from the value you pass.
 
 ### Reference system
 
@@ -224,7 +253,7 @@ Everything below that is provisioned, verified by `bin/provision.sh --check`:
 | **Maven** | `3.9.9` → `runtime/maven` |
 | **Node / npm** | `v22.23.1` / `10.9.8` (requirement — install with nvm/fnm/asdf) |
 | **Python** | `3.12.3` (only for `e2e-browser.py` and the ad-hoc probes) |
-| **Keycloak** | `26.7.4` → `$KEYCLOAK_HOME`, default `/opt/keycloak` |
+| **Keycloak** | `26.7.4` → `$KEYCLOAK_HOME`, default `/opt/keycloak` — **root-only default**, override if not root |
 | **Playwright** | `1.58.0` + bundled Chromium (only for `e2e-browser.py`) |
 
 System `git` 2.43.0 and `curl` 8.5.0 from the distro are sufficient.
@@ -283,6 +312,28 @@ sudo apt-get install -y openjdk-21-jdk-headless   # Keycloak only; the stack its
 
 Node 22 comes from your version manager (nvm, fnm, asdf) — `provision.sh` asserts the
 major version and prints what it found.
+
+### Step 1b — not running as root? Redirect three paths
+
+`bin/env.sh` defaults Keycloak to `/opt/keycloak` and both caches to
+`/root/.cache/davinci-mock/`. Those are root-owned, so a normal user cannot provision
+against them: `provision.sh` does a bare `mkdir`/`mv` with no privilege handling and
+stops at `Permission denied` on the Keycloak step, then fails again on the Gradle cache
+during the CRD build.
+
+If `id -u` is not `0`, export these **in the same shell** that runs the scripts. They are
+read with `${VAR:-default}`, so a pre-set value wins.
+
+```bash
+export KEYCLOAK_HOME="$HOME/.local/keycloak"
+export GRADLE_USER_HOME="$HOME/.cache/gradle"
+export VSAC_CACHE_DIR="$HOME/.cache/vsac"
+```
+
+`bin/env.sh` appends the required trailing slash to `VSAC_CACHE_DIR` for you. If you
+prefer, put those three lines in your shell profile instead of exporting them each time.
+
+Running as root? Skip this step — the defaults are already writable.
 
 ### Step 2 — provision the pinned inputs
 
@@ -592,7 +643,9 @@ than broadly.
 
 Also kept deliberately **outside** the project folder, and configurable via `env.sh`:
 `KEYCLOAK_HOME` (default `/opt/keycloak`), `GRADLE_USER_HOME` and `VSAC_CACHE_DIR`
-(both under `/root/.cache/davinci-mock/`). They live on ext4 because the original build volume was nearly full.
+(both under `/root/.cache/davinci-mock/`). They live on ext4 because the original build
+volume was nearly full. **The defaults are root-only** — if you are not root you must
+override all three, or provisioning fails; see [Step 1b](#step-1b-not-running-as-root-redirect-three-paths).
 
 **This repo carries no upstream patches.** Verified across all six clones: no tracked
 modifications, no untracked files. The customisations are entirely in the CDS-Library

@@ -18,14 +18,20 @@ Reference system: **Ubuntu 24.04.5 LTS, x86_64, glibc 2.39, 12 vCPU, 7 GB RAM** 
 1. Ubuntu 24.04 LTS or a close relative. Any modern glibc Linux works; Windows and macOS do not.
 2. `ss`, `curl`, `python3`, `unzip`, `git`, `node` (major 22) and a system JDK **21** (for
    Keycloak) are available. `bin/provision.sh` checks each and prints the install line if missing.
-3. Enough disk for the toolchain: **~2.5 GB** for `runtime/` (Temurin JDK 17 + Maven) and
+3. **Either root, or the three cache paths redirected.** `bin/env.sh` defaults `KEYCLOAK_HOME`
+   to `/opt/keycloak` and `GRADLE_USER_HOME` / `VSAC_CACHE_DIR` to `/root/.cache/davinci-mock/`.
+   All are root-owned, and `provision.sh` does a bare `mkdir`/`mv`, so a non-root user must
+   export `KEYCLOAK_HOME`, `GRADLE_USER_HOME` and `VSAC_CACHE_DIR` to writable paths *in the
+   same shell* that runs the scripts — see `README.md` §Step 1b. Otherwise §0 dies with a bare
+   `Permission denied`.
+4. Enough disk for the toolchain: **~3 GB** for `runtime/` (Temurin JDK 17 + Maven) and
    `repos/` (1.2 GB), plus Keycloak (~190 MB, default `/opt/keycloak`). The Gradle/Maven
    caches, the VSAC cache and Keycloak are deliberately kept **off** the project folder —
    see §12 and `bin/env.sh` — so put them on fast local disk.
-4. Clone onto a normal **ext4** filesystem, not a virtualised or network mount. A 9p/DrvFs
+5. Clone onto a normal **ext4** filesystem, not a virtualised or network mount. A 9p/DrvFs
    mount was measured ~260× slower for small-file writes (2000 files: 9.85 s vs 0.04 s) and
    roughly triples the cold-start time.
-5. Run every command below from the repository root.
+6. Run every command below from the repository root.
 
 ## 0. Provision the inputs (fresh clone only)
 
@@ -68,7 +74,7 @@ Three things it deliberately does *not* do, because each has bitten this project
 
 **Pin discipline:** `versions.lock` is the run version. Do not bump a SHA to "catch up with
 upstream" without re-running both drivers in §5/§6 and making a new tag. No run tag is
-currently published; see [Pin discipline](#pin-discipline) in the README for why, and for the
+currently published; see [Pin discipline](README.md#pin-discipline) for why, and for the
 command that creates the next one.
 
 ## 1. Clean slate (optional but safest)
@@ -415,6 +421,8 @@ diskpart
 ## 8. Troubleshooting quick-reference
 | Symptom | Cause | Fix |
 |---|---|---|
+| `provision.sh` dies on `mkdir: cannot create directory '/opt/keycloak'` | not running as root, and `KEYCLOAK_HOME` defaults to `/opt/keycloak` | export the three paths from `README.md` [Step 1b](README.md#step-1b-not-running-as-root-redirect-three-paths) **in the same shell** that runs the scripts; they are read with `${VAR:-default}` |
+| CRD build fails writing Gradle cache, or value-set seeding cannot write | `GRADLE_USER_HOME` / `VSAC_CACHE_DIR` both default under `/root/` | same export block; `env.sh` adds the required trailing slash to `VSAC_CACHE_DIR` itself |
 | `up.sh` ERR "refusing to start: stale process owns a stack port" | A JVM from a previous run survived | `bin/down.sh` (it sweeps ports), then retry |
 | PAS debug tables all 0 rows | A zombie PAS held the H2 file; new PAS couldn't open it | `bin/down.sh --purge` then `bin/up.sh --reset` |
 | dtr `/clients` is `[]` | `repos/dtr/databaseData/` missing (lowdb won't mkdir) | fixed in `up.sh --reset`; if you see it, re-run `up.sh` |

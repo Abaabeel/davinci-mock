@@ -14,7 +14,7 @@ neither is anything it contains that isn't one of the six clones).
 > contained the build host's real LAN IP (in text *and* rendered into a screenshot), a Windows
 > username and a WSL distro GUID. All four commits were rewritten with `git-filter-repo`, the
 > screenshot blob was replaced with a redacted copy, and the `run-2026-09-27` tag was **deleted
-> rather than re-pointed**. See [Post-publication scrub](#post-publication-scrub) — including why
+> rather than re-pointed**. See [Post-publication scrub](#8-post-publication-scrub) — including why
 > the rewrite is necessary but not sufficient.
 > What actually happened, and the places the plan was wrong:
 >
@@ -409,4 +409,4 @@ Two smaller lessons from the same pass:
   `git reset -q <file>` first. This is how a planted canary ended up in a published file.
 - **The guard that should have caught it was not the one that did.** The scan did flag the
   address; it was flagged in step 7 on a tree containing no credential, because step 7 was
-  matching its own source. See [the CI guard suite](#the-ci-guard-suite) in `CONTRIBUTING.md`.
+  matching its own source. See [the CI guard suite](CONTRIBUTING.md#run-the-suite-yourself).

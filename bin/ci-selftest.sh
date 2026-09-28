@@ -93,6 +93,13 @@ PY
 # is only as good as the shapes you thought to enumerate. Matching the secret
 # itself is the version that does not need that list.
 #
+# "!!" is a delete marker, and it exists for the same reason: not every guard
+# has a "bad thing was added" failure mode. The guard that the non-root install
+# paths are documented fails when a line is *absent*, so proving it sensitive
+# requires removing one, and appending text cannot do that. The rest of the
+# marker is deleted as a fixed string, not a regex -- the file names a specific
+# line, and a regex here would be one more thing that can be subtly wrong.
+#
 # The step keys are substrings of the step filenames. Each text is chosen to be
 # something a real contributor could plausibly commit.
 CASES=$(cat <<'EOF'
@@ -106,6 +113,7 @@ CASES=$(cat <<'EOF'
 11-Documentation|README.md|```\nunterminated fence
 12-Documentation|README.md|The repository is **@@private**", so git clone needs credentials
 12-Documentation|README.md|The repo is **@@private**" and should stay that way while the stack exists.
+13-The-non-root|README.md|!!export VSAC_CACHE_DIR=
 EOF
 )
 
@@ -117,6 +125,42 @@ printf '  %-58s %s\n' "---------------------------------------------------------
 # progress, so "must be clean at the end" is the wrong test -- it would report
 # the author's uncommitted work as residue. Compare against the baseline
 # instead: a case that fails to restore is a case that can mask the next one.
+#
+# Restoring the baseline, though, cannot be done with `git checkout --`. That
+# restores from the INDEX, not from the working tree, so in a scratch tree
+# carrying uncommitted changes it silently discards them: the first version of
+# this loop used it, and the very first run against a working tree with an
+# uncommitted README reported "planting changed the scratch tree" for a file no
+# case had touched, because restoring "clean" meant restoring the committed
+# version. The stated intent above and the mechanism below it did not agree.
+#
+# So: snapshot the file once, before the first case that touches it, and copy it
+# back afterwards. That restores the tree to exactly what the loop found,
+# whatever state git thinks that is.
+mkdir -p .ci-local/orig
+snapshot() {
+  local f="$1" slot
+  slot=".ci-local/orig/$(printf '%s' "$f" | tr '/' '_')"
+  [ -e "$slot" ] || cp -a "$f" "$slot"
+}
+restore() { cp -a ".ci-local/orig/$(printf '%s' "$1" | tr '/' '_')" "$1"; }
+
+# Apply a plant. "!!<fixed string>" deletes every line containing it, which is
+# how a guard with an "absent" failure mode is made to fail at all.
+plant() {
+  local f="$1" text="$2"
+  if [ "${text:0:2}" = '!!' ]; then
+    python3 -c '
+import sys, pathlib
+path, needle = pathlib.Path(sys.argv[1]), sys.argv[2]
+kept = [l for l in path.read_text().splitlines(keepends=True) if needle not in l]
+path.write_text("".join(kept))
+' "$f" "${text:2}"
+  else
+    printf '%b\n' "${text//@@/}" >> "$f"
+  fi
+}
+
 git status --porcelain | sort > .ci-local/baseline.txt
 
 while IFS='|' read -r key file text; do
@@ -127,9 +171,8 @@ while IFS='|' read -r key file text; do
     fail=$((fail + 1)); continue
   fi
 
-  git checkout -- "$file" 2>/dev/null || true
-  text="${text//@@/}"
-  printf '%b\n' "$text" >> "$file"
+  snapshot "$file"
+  plant "$file" "$text"
 
   if bash -e ".ci-local/steps/$target" >/dev/null 2>&1; then
     printf '  %-58s %s\n' "${text:0:56}" "DID NOT FIRE  <-- vacuous"
@@ -138,7 +181,7 @@ while IFS='|' read -r key file text; do
     printf '  %-58s %s\n' "${text:0:56}" "caught by ${target%%.*}"
     pass=$((pass + 1))
   fi
-  git checkout -- "$file" 2>/dev/null || true
+  restore "$file"
 done <<< "$CASES"
 
 echo

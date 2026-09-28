@@ -23,7 +23,7 @@ a coverage card, logs in at a Keycloak login page, fills a questionnaire, presse
    SHA invalidates every result you report.
 3. **Do not use `/tmp`** for anything belonging to this project. It has been wiped once and
    took the entire toolchain with it. Build artefacts, caches and scratch all go under the
-   repository or under `/root/.cache/davinci-mock/`.
+   repository or under the cache directory named by `GRADLE_USER_HOME` / `VSAC_CACHE_DIR`.
 4. **Never export a global `PORT`.** See trap 1. `bin/up.sh` passes `PORT` per service.
 5. **Never `pkill -f <pattern>`** on this box. See trap 5. It will match the shell running it.
 6. **Do not delete or move a published git tag.** A tag is the record of a certified run.
@@ -60,11 +60,27 @@ ls /usr/lib/jvm/                              # need a JDK 21 for Keycloak
 python3 --version
 df -h .                                       # need ~3 GB free
 free -h                                       # 7 GB total is the working minimum
+id -u                                         # if NOT 0, see below before step 2
 ```
 
 If Node is missing or the wrong major, stop and say so. Neither upstream `package.json`
 declares `engines`, so the wrong major does not fail cleanly — it produces opaque ESM errors
 much later, and the agent will waste a cycle blaming something else.
+
+**If `id -u` is not 0, the stock paths will not work.** `bin/env.sh` defaults Keycloak to
+`/opt/keycloak` and the two caches to `/root/.cache/davinci-mock/`, all root-owned, and
+`provision.sh` does a bare `mkdir`/`mv` with no privilege handling. Export these in the same
+shell that runs the scripts — they are read with `${VAR:-default}`, so a pre-set value wins:
+
+```bash
+export KEYCLOAK_HOME="$HOME/.local/keycloak"
+export GRADLE_USER_HOME="$HOME/.cache/gradle"
+export VSAC_CACHE_DIR="$HOME/.cache/vsac"
+```
+
+`env.sh` appends the load-bearing trailing slash to `VSAC_CACHE_DIR` itself. Do not re-add or
+strip it. Without these three, step 2 dies with a bare `Permission denied` that names neither
+the variable nor the step.
 
 ## Step 2 — provision
 
@@ -73,10 +89,11 @@ much later, and the agent will waste a cycle blaming something else.
 ./bin/provision.sh --check      # MUST report "all inputs present" and exit 0
 ```
 
-This installs nothing system-wide. It unpacks a checksum-verified Temurin JDK 17 to
-`runtime/jdk17`, Maven to `runtime/maven`, Keycloak to `$KEYCLOAK_HOME` (default
-`/opt/keycloak`), and clones the six upstream repos at their pinned SHAs. You do not need a
-system JDK 17 — only Keycloak needs a system JDK 21.
+This installs nothing into your package manager. It unpacks a checksum-verified Temurin
+JDK 17 to `runtime/jdk17`, Maven to `runtime/maven`, Keycloak to `$KEYCLOAK_HOME` (default
+`/opt/keycloak`, which *is* outside the project folder — see step 1), and clones the six
+upstream repos at their pinned SHAs. You do not need a system JDK 17 — only Keycloak needs a
+system JDK 21.
 
 `--check` is the real gate. If it exits non-zero, the run cannot succeed; report its output
 verbatim rather than proceeding. Note that a green `--check` proves the *inputs* are present —
