@@ -48,4 +48,3 @@
 # still names the string is the configuration that makes the reversal
 # enforceable rather than merely recorded.
 # -----------------------------------------------------------------------
-Contact: sardar@aiden[t]ech.com

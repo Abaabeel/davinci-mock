@@ -19,9 +19,11 @@ neither is anything it contains that isn't one of the six clones).
 > What actually happened, and the places the plan was wrong:
 >
 > - **Identity.** The commit was first made under a placeholder identity I invented, then re-attributed
->   to `Abaabeel <<your-git-email>>` from `~/.gitconfig` before pushing. Worth knowing that
->   address is a work address, not a GitHub-verified one, so GitHub may show the commit as an
->   unverified contributor until the email is added to the account.
+>   to the address in the developer's `~/.gitconfig` before pushing. That address was a work
+>   mailbox rather than a GitHub-verified one, so GitHub would have shown the commits as
+>   unverified contributions — and publishing would have made a live mailbox permanently
+>   world-readable. Both were fixed before publication: see
+>   [the author-email reversal](#the-author-email-reversal) below.
 > - **Credentials.** `git` had no credential helper, so the first push failed with
 >   `could not read Username for 'https://github.com'`. Fixed with a **repo-local**
 >   `credential.helper = !gh auth git-credential` rather than `gh auth setup-git`, so nothing in
@@ -364,3 +366,47 @@ visibility, not after.
 Repository visibility is not a security control. A private repository is not a substitute for
 running the scan, and a force-push is not a substitute for removing the objects. Both of those
 cost a full afternoon here, and both were found by checking rather than by reasoning.
+
+### The author-email reversal
+
+The author's own work address was initially **kept**, on the reasoning that correct attribution
+of one's own work outweighs the address not appearing. That is a defensible position for a
+private repository, and it was implemented rather than argued with: the address was allowlisted
+in `.github/scan-allow.txt`, the trade-off was written down, and the reversal was documented so
+it stayed a deliberate choice instead of drifting into an accident.
+
+Publication overturned it. A live mailbox becomes world-readable and harvestable the moment a
+repository is public, and there is no scrub for a public repository's history — the exposure is
+permanent and the only remedy afterwards is rewriting and re-publishing, which is the expensive
+version of the operation. The commits would also have rendered as unverified contributions.
+
+So the decision was reversed **while the repository was still private**, at the cost of two
+`git filter-branch` passes over nine commits:
+
+1. `--env-filter` rewrote author and committer name and email to
+   `Abaabeel <Abaabeel@users.noreply.github.com>` — a GitHub-verified address that preserves
+   attribution without exposing a mailbox.
+2. `--tree-filter` rewrote the address out of *file contents* in earlier commits. Metadata-only
+   rewriting is not sufficient: the string also lived in `GIT-PLAN.md` prose, in a `ci.yml`
+   comment, and in `scan-allow.txt`, and all three would have been readable on a public
+   repository regardless of what the commit headers said.
+
+Verified afterwards across all 103 objects in the repository: zero blobs containing the address,
+zero occurrences in any diff, and `noreply` as the only author and committer identity present.
+
+`git-filter-repo` was tried first and crashed on a bytes/str `TypeError` while dumping commit
+objects — the messages in this history contain em-dashes, and filter-repo's message-encoding path
+chokes on them. `git filter-branch` was used instead because it never rewrites message bytes,
+which is all that was needed here. The crash is worth remembering as the reason to have both
+tools in mind: the "better" one was not the right one for a metadata-only change over
+non-ASCII commit messages.
+
+Two smaller lessons from the same pass:
+
+- **`git checkout -- <file>` restores from the index, not from `HEAD`.** A file that had been
+  `git add`ed with test content came back still containing the test content, and the next
+  `git add -A` committed it. Undoing a staged change needs `git restore --staged --worktree`, or
+  `git reset -q <file>` first. This is how a planted canary ended up in a published file.
+- **The guard that should have caught it was not the one that did.** The scan did flag the
+  address; it was flagged in step 7 on a tree containing no credential, because step 7 was
+  matching its own source. See [the CI guard suite](#the-ci-guard-suite) in `CONTRIBUTING.md`.
