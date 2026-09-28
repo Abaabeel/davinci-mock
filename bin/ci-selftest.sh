@@ -82,6 +82,17 @@ PY
 # test data. It is the fifth appearance of this lesson, which is why it is
 # recorded here instead of being left as a curiosity.
 #
+# The split must cover the VALUE as well as the name. An earlier version of this
+# table protected "ADMIN_TOKEN" with "@@" but spelled the upstream token value
+# out in full, on the reasoning that guard 8 matched the name-and-quote shape and
+# would never see a bare value. That reasoning was wrong, and the consequence
+# was that the token was published in this file -- in a repository whose entire
+# reason for existing publicly is that it does not contain it. Guard 8 now
+# matches the obfuscated value directly, there are cases below for a bare value
+# with no name attached, and the lesson generalises: a guard written as a shape
+# is only as good as the shapes you thought to enumerate. Matching the secret
+# itself is the version that does not need that list.
+#
 # The step keys are substrings of the step filenames. Each text is chosen to be
 # something a real contributor could plausibly commit.
 CASES=$(cat <<'EOF'
@@ -89,8 +100,9 @@ CASES=$(cat <<'EOF'
 06-No-secrets|README.md|aws key AKIA@@IOSFODNN7EXAMPLE here
 07-No-host|README.md|The runner was at 172@@.22.71.96 when this happened.
 07-No-host|README.md|Scratch space lives at /tmp/@@opencode/run-1
-08-No-upstream|investigation-log.md|ADMIN_@@TOKEN = "<redacted>"
-08-No-upstream|SOURCES.md|Upstream ships ADMIN_@@TOKEN = "s3cr3t-upstream-value"
+08-No-upstream|investigation-log.md|ADMIN_@@TOKEN = "Y3YW@@q2l08kvFqy50fQJY"
+08-No-upstream|SOURCES.md|Upstream ships ADMIN_@@TOKEN = "s3cr3t-@@upstream-value"
+08-No-upstream|investigation-log.md|The value is Y3YW@@q2l08kvFqy50fQJY, unlabelled
 11-Documentation|README.md|```\nunterminated fence
 12-Documentation|README.md|The repository is **@@private**", so git clone needs credentials
 12-Documentation|README.md|The repo is **@@private**" and should stay that way while the stack exists.

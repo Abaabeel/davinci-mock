@@ -145,19 +145,25 @@ jobs:
           # upstream PAS. The value must stay redacted; the finding is reported
           # without it. This guard is what keeps that true.
           #
-          # ADMIN_[T]OKEN is obfuscated for the same reason as every other
-          # pattern in this file. The first version of this guard spelled the
-          # variable plainly and matched its own source line, because the
-          # character following the quote in this file is "[" -- neither a
-          # quote nor a "<" -- so the guard failed CI against a tree that
-          # contains no credential at all. Writing the explanation out then
-          # reproduced the literal a second time, and the guard failed again.
-          # Two rounds for one bug, both self-inflicted, which is the argument
-          # for bin/ci-local.sh: a grep guard that scans a directory containing
-          # itself must be tested against the directory, not against a list of
-          # strings it is supposed to catch.
+          # ADMIN_[T]OKEN and the value are both obfuscated for the same reason:
+          # this file is in the tree being scanned, so a pattern spelled plainly
+          # matches itself. The first version read ADMIN_TOKEN = "[^"<] and
+          # rejected its own source line, because the character after the quote
+          # here is "[" -- neither a quote nor a "<". Writing the explanation
+          # out then reproduced the literal a second time and it failed again.
+          #
+          # The value is matched DIRECTLY as well as via the name-and-quote
+          # shape, and that second rule is not redundant. The name-shape rule
+          # alone was blind to a bare value with no name attached, which is
+          # exactly how the token ended up published in bin/ci-selftest.sh: the
+          # test data protected the name with a join marker and spelled the value
+          # out in full, on the reasoning that the shape guard would never see
+          # it. It did not see it, and the token shipped. A guard written as a
+          # shape is only as good as the set of shapes you thought to enumerate;
+          # matching the secret is the version that does not need that list.
           set +e
-          hits=$(git ls-files -z | xargs -0 grep -nE 'ADMIN_[T]OKEN = "[^"<]' \
+          hits=$(git ls-files -z | xargs -0 grep -nE \
+            'ADMIN_[T]OKEN[[:space:]]*=[[:space:]]*"[^"<]|Y3YW[q]2l08kvFqy50fQJY' \
             | grep -v '<redacted>')
           rc=$?
           set -e
