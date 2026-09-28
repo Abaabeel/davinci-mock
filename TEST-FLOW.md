@@ -12,12 +12,20 @@ commands are idempotent and avoid /tmp where possible.
 > Skipping §0 and running `bin/up.sh` will fail on a missing CDS-Library.
 
 ## Prerequisites
-1. Linux (or WSL2) environment. The `/mnt/c/...` mount is case-insensitive and slow — normal here.
-2. `ss`, `curl`, `python3`, `node` (major 22), `java` are available. `bin/provision.sh` checks each.
+Reference system: **Ubuntu 24.04.5 LTS, x86_64, glibc 2.39, 12 vCPU, 7 GB RAM** — see
+`README.md` §Requirements for the full table of provisioned and system versions.
+
+1. Ubuntu 24.04 LTS or a close relative. Any modern glibc Linux works; Windows and macOS do not.
+2. `ss`, `curl`, `python3`, `unzip`, `git`, `node` (major 22) and a system JDK **21** (for
+   Keycloak) are available. `bin/provision.sh` checks each and prints the install line if missing.
 3. Enough disk for the toolchain: **~2.5 GB** for `runtime/` (Temurin JDK 17 + Maven) and
-   `repos/` (1.2 GB). This checkout was developed on a 100 %-full `C:`, which is why the VSAC
-   cache and Keycloak both live on ext4 instead — see §12 and `bin/env.sh`.
-4. Run commands from: `/mnt/c/Users/<you>/Downloads/davinci-mock`
+   `repos/` (1.2 GB), plus Keycloak (~190 MB, default `/opt/keycloak`). The Gradle/Maven
+   caches, the VSAC cache and Keycloak are deliberately kept **off** the project folder —
+   see §12 and `bin/env.sh` — so put them on fast local disk.
+4. Clone onto a normal **ext4** filesystem, not a virtualised or network mount. A 9p/DrvFs
+   mount was measured ~260× slower for small-file writes (2000 files: 9.85 s vs 0.04 s) and
+   roughly triples the cold-start time.
+5. Run every command below from the repository root.
 
 ## 0. Provision the inputs (fresh clone only)
 
@@ -64,7 +72,7 @@ is `run-2026-09-27`.
 
 ## 1. Clean slate (optional but safest)
 ```bash
-cd /mnt/c/Users/<you>/Downloads/davinci-mock
+cd /path/to/davinci-mock      # the repository root
 ./bin/down.sh --purge
 ```
 Expected: all six stack ports become free, on-disk PAS/DTR state purged.
@@ -100,7 +108,9 @@ crd-request-generator    3001   http://localhost:3001/             UP
   ok pas seeded itself (39 rules)
 ```
 
-Total cold start ~5-6 minutes on `/mnt/c` (due to 9p). Be patient.
+Total cold start ~5-6 minutes on a slow/virtualised mount; 2-4 minutes on local ext4. On
+the very first run, add the one-off npm install and webpack builds for dtr and crg
+(20-40 min on a 9p mount). Be patient.
 
 ## 3. Quick sanity probes (manual)
 ```bash
@@ -125,7 +135,7 @@ Expected: all 200s; `order-sign-crd` count >=1; Rules rows >=40 (header + 39); C
 
 ## 4. Interactive browser path (the mock EHR UI) — VERIFIED WORKING in Chromium
 Open in a browser: `http://localhost:3001/` (all six services bind `0.0.0.0`, so this also
-works from Windows/WSL2 host browser via localhost). Exact sequence, as driven end-to-end:
+works from any browser on the same host). Exact sequence, as driven end-to-end:
 
 1. Click **`PATIENT SELECT`**. A modal lists patients (pat015, pat1234, pat014, pat016, pat013…).
 2. In the **pat013 tile** (Vlad Quinton, 69, male), use its `Select a request...` dropdown and
@@ -358,8 +368,14 @@ install and `investigation-log.md` §4.9 for the full correction. The original p
 As built, step 1 went to ext4 (`/opt/keycloak`) instead of `runtime/`, because C: was at 99 %.
 5. Re-run the browser trace (§7) to prove the DTR questionnaire actually opens and submits.
 
-## 7a. Disk: the WSL/C: gotcha that blocked the above
-Filling C: is a shared-cost trap on this box, and the numbers are worth recording:
+## 7a. Host-specific: reclaiming disk on a WSL2 dev box
+
+> **Not needed on a plain Ubuntu install.** Kept as a record of the host this was built on,
+> where the checkout sat on a 100 %-full Windows `C:` drive and the toolchain did not fit.
+> On a normal ext4 filesystem, let `bin/provision.sh` use its defaults and skip this
+> section entirely.
+
+Filling C: is a shared-cost trap on that box, and the numbers are worth recording:
 
 - **WSL never returns vhdx space to Windows automatically.** Freeing 8.1 GB inside the
   filesystem (npm cache 9.7 G → 1.6 G) moved C: from 385 MB to *332 MB* — it went **down**.
@@ -446,11 +462,11 @@ source bin/env.sh && ss -ltnp | grep -E ":($(echo "$STACK_PORTS" | tr '|' '|'))[
 URLs at runtime.
 
 ```bash
-# discover the WSL address (bridged networking, so it is a real LAN address)
+# discover this host's LAN address
 ip -4 -o addr show scope global | awk '{print $4}'
-# => 192.0.2.10/20
+# => 192.168.1.50/24
 
-# default: advertise localhost (WSL-internal, and Windows via localhost forwarding)
+# default: advertise localhost (correct for a browser on the same machine)
 bin/up.sh
 
 # LAN mode: advertise the address the remote browser will actually dial
@@ -478,9 +494,10 @@ neither the issuer nor a `default` entry and refuses to launch. Both entries coe
 `/clients` after a mode switch, so flipping back and forth is safe.
 
 ### Firewall
-Nothing in the stack opens ports — that is Windows' job. If a second machine cannot connect,
-check inbound rules for 3001/3005/8080/8090/9015 and prefer a scoped allow for the specific subnet
-over a blanket rule, since this exposes a mock FHIR server and PAS.
+Nothing in the stack opens ports — that is the host firewall's job (`ufw`, `firewalld`, or
+whatever is in front of it). If a second machine cannot connect, allow inbound
+3001/3005/8080/8090/9015 and prefer a scoped allow for the specific subnet over a blanket
+rule, since this exposes a mock FHIR server and PAS.
 
 ## 12. Keycloak + the VSAC value-set cache (what the dtr hop actually needs)
 
@@ -499,13 +516,15 @@ click through, and then it fails.
 
 ### Install (once)
 
-Keycloak is deliberately **not** in this project folder: C: is at 99% (2.3 GB
-free) and /mnt/c is slow 9p. It lives on ext4.
+Keycloak is deliberately **not** in this project folder: it defaults to
+`$KEYCLOAK_HOME` (`/opt/keycloak`) on local disk rather than the project tree, so a slow or
+nearly-full checkout filesystem cannot strand it. `bin/provision.sh` does this for you and
+verifies the result; the manual equivalent is:
 
 ```bash
-curl -L -o /tmp/kc.zip \
+curl -L -o kc.zip \
   https://github.com/keycloak/keycloak/releases/download/26.7.4/keycloak-26.7.4.zip
-unzip -q /tmp/kc.zip -d /opt && mv /opt/keycloak-26.7.4 /opt/keycloak && rm /tmp/kc.zip
+unzip -q kc.zip -d /opt && mv /opt/keycloak-26.7.4 /opt/keycloak && rm kc.zip
 ```
 
 Needs **JDK 21**; `up.sh` points `JAVA_HOME` at `/usr/lib/jvm/java-21-openjdk-amd64`
