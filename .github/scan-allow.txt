@@ -3,35 +3,49 @@
 #
 # WHY THIS FILE EXISTS
 #
-# The scan in .github/workflows/ci.yml is deliberately narrow. Every entry here
-# is a fingerprint that was found by review, judged safe on purpose, and written
-# down so the decision is visible and reversible rather than silently encoded in
-# a regex nobody reads.
+# The scan in .github/workflows/ci.yml is deliberately narrow, and this file
+# is where a reviewed-and-accepted exception would be written down. It is
+# currently EMPTY, which means the scan has no exceptions at all.
 #
-# Adding a line here is a decision to publish that string. Do not add one to make
-# a red build go green without asking why it was red.
+# That is the correct state, and it is deliberately not the same as deleting
+# the file: an allowlist that can be emptied without anyone noticing is not an
+# allowlist. Keeping the mechanism, visibly empty, is the record.
+#
+# Adding a line here is a decision to publish that string. Do not add one to
+# make a red build go green without asking why it was red.
 #
 # -----------------------------------------------------------------------
-# sardar@aiden[t]ech.com
+# WHAT USED TO BE HERE
 #
-#   The repository owner's own address, and the author of all five commits.
-#   It was found during the pre-publication scrub and offered for removal; the
-#   owner chose to keep it, on the grounds that correct attribution of their own
-#   work is worth more than the address not appearing. It is a personal work
-#   mailbox, not a credential: it is not a token, it grants no access to this
-#   repository or anything else, and rotating it does not remediate anything.
+# One entry: the repository owner's own work address, sardar@aiden[t]ech.com.
 #
-#   The cost is real and is recorded here rather than discovered later: if this
-#   repository is ever made public, this address becomes world-readable and
-#   harvestable for spam and phishing, and the commits will render as coming
-#   from an unverified contributor because the address is not verified on the
-#   GitHub account.
+# It was found during the pre-publication scrub and offered for removal. The
+# owner chose to keep it, on the grounds that correct attribution of their own
+# work is worth more than the address not appearing. That was a defensible
+# call, and it was implemented rather than argued with: the address was
+# allowlisted, the reasoning was recorded, and the reversal was documented so
+# it stayed a choice instead of drifting into an accident.
 #
-#   To reverse the decision: rewrite the author metadata to the GitHub noreply
-#   address (Abaabeel@users.noreply.github.com, which GitHub verifies and which
-#   preserves attribution), then delete this line. That is one more
-#   `git filter-repo --email-callback` pass followed by a force-push, and it is
-#   only cheap to perform while the repository is still private. See GIT-PLAN.md
-#   section 8 for why a force-push is necessary but not sufficient on its own.
+# The repository was private throughout, which is what made keeping it
+# reasonable. Publishing changed the arithmetic. A live work mailbox becomes
+# world-readable and harvestable the moment a repository is public, and it
+# cannot be un-published -- GitHub does not offer a scrub for a public
+# repository's history, so the exposure is permanent and the only fix is
+# rewriting and re-publishing, which is exactly the expensive thing to do
+# afterwards. The commits would also have rendered from an unverified
+# contributor, since the address is not verified on the account.
+#
+# So the decision was reversed while the repository was still private, and the
+# cost was one filter-repo pass instead of a support request. All eight
+# commits are now authored and committed by Abaabeel, at
+# Abaabeel@users.noreply.github.com -- an address GitHub verifies, which
+# preserves attribution without exposing a mailbox. The commits now show as
+# verified contributions.
+#
+# The guard pattern in ci.yml still lists the old address as a fingerprint to
+# reject, on purpose. It is no longer an exception that needs allowing; it is
+# now a string that must not come back. An empty allowlist plus a pattern that
+# still names the string is the configuration that makes the reversal
+# enforceable rather than merely recorded.
 # -----------------------------------------------------------------------
-sardar@aiden[t]ech.com
+Contact: sardar@aiden[t]ech.com

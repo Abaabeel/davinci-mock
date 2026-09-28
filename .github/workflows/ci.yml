@@ -119,15 +119,17 @@ jobs:
           echo "ok   no token patterns"
 
       - name: No host or tool fingerprints
-        # sardar@aiden[t]ech.com is an intentional, documented exception: it is the
-        # repository owner's own address and they chose to keep it rather than
-        # rewrite the author metadata. It is listed in the ignore file below so
-        # that a *different* address still fails. Change the decision by editing
-        # .github/scan-allow.txt and re-authoring, not by loosening this pattern.
+        # The owner's own work address is in the pattern below as a string to
+        # REJECT, not an exception. It was allowlisted while the repository was
+        # private; going public made a live mailbox permanently readable, so the
+        # decision was reversed before publication and all commits were
+        # re-authored to the GitHub noreply address. The pattern is what stops
+        # it coming back. .github/scan-allow.txt is now empty, which is the
+        # state that makes the reversal enforceable.
         run: |
           set +e
           hits=$(git ls-files -z | xargs -0 grep -nE \
-            '/tmp/[o]pencode|172[.]22[.]71[.]96|10[.]0[.]3[.]1|FirstName[.]LastName|e58cc9c[b]' \
+            '/tmp/[o]pencode|172[.]22[.]71[.]96|10[.]0[.]3[.]1|FirstName[.]LastName|e58cc9c[b]|sardar@aiden[t]ech' \
             | grep -vFf .github/scan-allow.txt)
           rc=$?
           set -e
