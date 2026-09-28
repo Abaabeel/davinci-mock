@@ -10,11 +10,19 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Pinned, not ubuntu-latest. The upstream label migrates to Ubuntu 26 on
+    # 2026-10-19, and a repo whose entire premise is a pinned toolchain should
+    # not have its base image move underneath it. Change this deliberately.
+    runs-on: ubuntu-24.04
+    # 15, not 10. The screenshot guard is 13 images x 4 OCR passes, which is
+    # ~50 s with a warm tesseract and a few minutes on a cold runner that also
+    # has to apt-install it. Ten minutes is not much headroom for a step whose
+    # value is entirely in not skipping it.
+    timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      # v5 is the first major on node24; v4 is node20 and is deprecated.
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # the scan walks full history, not just the tip
 
@@ -27,9 +35,12 @@ jobs:
           exit $fail
 
       - name: Python compiles
+        # Only the .py file. bin/provision.sh is shell and is covered by the
+        # parse step above; the earlier version of this step tried to
+        # py_compile it, always failed, and hid the failure behind 2>/dev/null
+        # and an || fallback, which is a guard that cannot fail.
         run: |
-          python3 -m py_compile bin/e2e-browser.py bin/provision.sh 2>/dev/null \
-            || python3 -m py_compile bin/e2e-browser.py
+          python3 -m py_compile bin/e2e-browser.py
           find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 
       - name: JSON fixtures are valid
@@ -88,10 +99,22 @@ jobs:
           # High-confidence token patterns. Deliberately requires a length after
           # the prefix: bare 'github_pat_' as a substring appears in prose in
           # GIT-PLAN.md, which documents the very patterns scanned for here.
-          if git ls-files -z | xargs -0 grep -nE \
-            'ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,}|gho_[A-Za-z0-9]{30,}|ghs_[A-Za-z0-9]{30,}|hf_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{40,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{30,}|BEGIN [A-Z ]*PRIVATE KEY'; then
-            echo "::error::possible credential committed"
-            exit 1
+          #
+          # The exit code is inspected rather than used as a bare `if`. grep
+          # exits 2 on a scan error, and `if grep ...; then` treats 2 exactly
+          # like 1, so a guard that could not read the tree would report
+          # success. Five of these twelve steps were written that way. Every
+          # grep guard below now distinguishes "no match" from "did not run".
+          set +e
+          hits=$(git ls-files -z | xargs -0 grep -nE \
+            'ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,}|gho_[A-Za-z0-9]{30,}|ghs_[A-Za-z0-9]{30,}|hf_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{40,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{30,}|BEGIN [A-Z ]*PRIVATE KEY' 2>&1)
+          rc=$?
+          set -e
+          if [ "$rc" -eq 2 ]; then
+            echo "$hits"; echo "::error::the secret scan failed to run"; exit 1
+          fi
+          if [ "$rc" -eq 0 ]; then
+            echo "$hits"; echo "::error::possible credential committed"; exit 1
           fi
           echo "ok   no token patterns"
 
@@ -102,11 +125,15 @@ jobs:
         # that a *different* address still fails. Change the decision by editing
         # .github/scan-allow.txt and re-authoring, not by loosening this pattern.
         run: |
-          if git ls-files -z | xargs -0 grep -nE \
+          set +e
+          hits=$(git ls-files -z | xargs -0 grep -nE \
             '/tmp/[o]pencode|172[.]22[.]71[.]96|10[.]0[.]3[.]1|FirstName[.]LastName|e58cc9c[b]' \
-            | grep -vFf .github/scan-allow.txt; then
-            echo "::error::host or tool fingerprint committed"
-            exit 1
+            | grep -vFf .github/scan-allow.txt)
+          rc=$?
+          set -e
+          # 1 here means every hit was allowlisted, which is the intended path.
+          if [ "$rc" -eq 0 ]; then
+            echo "$hits"; echo "::error::host or tool fingerprint committed"; exit 1
           fi
           echo "ok   no host or tool fingerprints"
 
@@ -115,9 +142,25 @@ jobs:
           # investigation-log.md documents a hardcoded admin token in the pinned
           # upstream PAS. The value must stay redacted; the finding is reported
           # without it. This guard is what keeps that true.
-          if git ls-files -z | xargs -0 grep -nE 'ADMIN_TOKEN = "[^"<]' \
-            | grep -v '<redacted>'; then
-            echo "::error::an upstream credential literal is reproduced in-tree"
+          #
+          # ADMIN_[T]OKEN is obfuscated for the same reason as every other
+          # pattern in this file. The first version of this guard spelled the
+          # variable plainly and matched its own source line, because the
+          # character following the quote in this file is "[" -- neither a
+          # quote nor a "<" -- so the guard failed CI against a tree that
+          # contains no credential at all. Writing the explanation out then
+          # reproduced the literal a second time, and the guard failed again.
+          # Two rounds for one bug, both self-inflicted, which is the argument
+          # for bin/ci-local.sh: a grep guard that scans a directory containing
+          # itself must be tested against the directory, not against a list of
+          # strings it is supposed to catch.
+          set +e
+          hits=$(git ls-files -z | xargs -0 grep -nE 'ADMIN_[T]OKEN = "[^"<]' \
+            | grep -v '<redacted>')
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "$hits"; echo "::error::an upstream credential literal is reproduced in-tree"
             exit 1
           fi
           echo "ok   upstream credential values stay redacted"
@@ -127,9 +170,14 @@ jobs:
         # above, and the retention of one author address is a deliberate decision,
         # so the allowlist applies here too.
         run: |
-          if git log --all -p | grep -E \
+          set +e
+          hits=$(git log --all -p | grep -E \
             '/tmp/[o]pencode|172[.]22[.]71[.]96|10[.]0[.]3[.]1|FirstName[.]LastName|sardar@aiden[t]ech' \
-            | grep -vFf .github/scan-allow.txt; then
+            | grep -vFf .github/scan-allow.txt)
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "$hits" | head -20
             echo "::error::a fingerprint is reachable in git history"
             exit 1
           fi
@@ -140,8 +188,14 @@ jobs:
         # a screenshot, which no text scan can see. tesseract + four page
         # segmentation modes is what caught it.
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends tesseract-ocr
+          command -v tesseract >/dev/null \
+            || { echo "::error::tesseract unavailable; this guard cannot be skipped"; exit 1; }
           fail=0
+          imgs=$(git ls-files 'docs/**/*.png' | wc -l)
+          echo "scanning $imgs images at 4 page-segmentation modes each"
+          [ "$imgs" -gt 0 ] || { echo "::error::no screenshots found to scan"; exit 1; }
           for f in $(git ls-files 'docs/**/*.png'); do
             for psm in 3 6 11 12; do
               if tesseract "$f" - --psm $psm 2>/dev/null \
@@ -166,11 +220,40 @@ jobs:
           done
           exit $fail
 
-      - name: README no longer claims the repository is private
+      - name: Documentation no longer claims the repository is private
+        # Fixed-string matching, not a regex. The first version of this guard
+        # was `the repo(itory)? is \*\*private` and it could never fire: the
+        # text it was written for is "repository", which leaves "sitory" after
+        # "repo", so the optional group had to be spelled (sitory)?. One
+        # omitted letter and the guard was vacuous -- it reported success on
+        # the very text it existed to reject, and it did so on the first push,
+        # because it was the one step never tested against its target. With
+        # literal phrases there is nothing to get subtly wrong.
         run: |
-          if grep -rniE 'the repo(itory)? is \*\*private|should stay that way' \
-             --include='*.md' .; then
+          # Two literal phrases, and they are the two that were actually in the
+          # README before the scrub. Both are checked rather than a wider regex,
+          # because a wider one keeps finding itself: an earlier draft also
+          # matched the CONTRIBUTING.md row that describes this guard.
+          set +e
+          hits=$(grep -rniF \
+            -e 'is **private**' \
+            -e 'should stay that way' \
+            --include='*.md' --exclude-dir=.ci-local . 2>/dev/null)
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "$hits"
             echo "::error::documentation still says the repository is private"
             exit 1
           fi
           echo "ok   no stale private-repo claims"
+
+      - name: Every guard is proven able to fail
+        # A guard that has only ever passed is indistinguishable from a broken
+        # one, and four of the steps above were broken on the first push: two
+        # matched their own source, one had a typo that made it vacuous, and
+        # five treated a grep error as a clean result. This plants one leak per
+        # guard and fails if the intended guard does not react. It runs in a
+        # throwaway snapshot, so the checked-out tree is never modified.
+        run: |
+          ./bin/ci-selftest.sh

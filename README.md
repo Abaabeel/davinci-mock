@@ -616,10 +616,12 @@ fixtures/
   keycloak/BurdenReduction-realm.json   realm, 26 SMART client scopes, dtr/dtr-demo
 docs/screenshots/   4 curated PNGs + a 9-frame e2e pass
 AGENTS.md           playbook for an AI agent: provision, start, verify, report, stop
-CONTRIBUTING.md     what CI checks and why
+CONTRIBUTING.md     what CI checks and why, and how to run the guards locally
 SECURITY.md         what is not a finding, how to report, and why force-push is not erasure
 LICENSE             MIT
 .github/workflows/ci.yml   lint, pin, secret, history and screenshot-OCR guards
+bin/ci-local.sh     runs all 13 CI steps locally, each reported separately
+bin/ci-selftest.sh  plants one leak per guard and asserts each is caught
 PLAN.md             the plan, the 16-item fix list, and every phase result
 TEST-FLOW.md        the step-by-step runbook — start here if this README is not enough
 SOURCES.md          provenance for every claim in PLAN.md, access date 2026-09-26

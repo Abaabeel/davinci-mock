@@ -40,7 +40,8 @@ CI will run, and some of it will fail for reasons that are easy to trip:
 | no fingerprints in git history | a leak that is fixed in the tip but still reachable in an old commit |
 | screenshots OCR'd, 4 segmentation modes | a host address rendered as *pixels* into a PNG — invisible to every text scan, and the exact thing that happened during review |
 | code fences balanced | a truncated markdown file |
-| no stale "the repo is private" claims | documentation that contradicts reality |
+| no stale "this repo is not public yet" claims | documentation that contradicts reality |
+| every guard is proven able to fail | a guard that cannot fail, passing |
 
 Two of those deserve emphasis:
 
@@ -49,6 +50,30 @@ Two of those deserve emphasis:
   [Pin discipline](README.md#pin-discipline).
 - **If you add or replace a screenshot, run it through OCR before committing.** A terminal
   showing a URL or an IP will render that string into the image, and no grep will find it.
+
+### Run the suite yourself
+
+Do not push a change to CI and find out whether it works from a failure email. Both scripts
+run the identical commands, locally, against a throwaway snapshot of the tree:
+
+```bash
+./bin/ci-local.sh       # all 13 steps, each reported separately
+./bin/ci-selftest.sh    # plants one leak per guard, asserts each is caught
+```
+
+`ci-local.sh` matters because a workflow step that has never executed is a guess. The first
+version of this file's own suite was reported working after two of twelve steps had been run
+by hand; the untested one failed on the first push.
+
+`ci-selftest.sh` matters because a guard that has only ever *passed* is indistinguishable from
+a broken one — and four of these guards were broken that way. One matched its own source
+line, another could never fire because of a single missing letter in a regular expression,
+and five treated a `grep` error as a clean result. Each is written up in that script's
+header, because the pattern repeats: **a guard that scans a directory containing itself must
+be tested against that directory, not against a list of strings.** That applies to the test
+data too, which is why the planted leaks in `ci-selftest.sh` are assembled from fragments.
+
+If you add a guard, add a case for it. A guard with no case is a guard nobody has tested.
 
 ```bash
 # what CI's image check does, if you want it locally

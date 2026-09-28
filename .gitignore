@@ -32,3 +32,6 @@ dist/
 # py_compile or an editor's indexer drops this next to the script.
 __pycache__/
 *.pyc
+
+# CI harness (executed by bin/ci-local.sh)
+.ci-local/
