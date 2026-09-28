@@ -147,10 +147,15 @@ jobs:
           #
           # ADMIN_[T]OKEN and the value are both obfuscated for the same reason:
           # this file is in the tree being scanned, so a pattern spelled plainly
-          # matches itself. The first version read ADMIN_TOKEN = "[^"<] and
-          # rejected its own source line, because the character after the quote
-          # here is "[" -- neither a quote nor a "<". Writing the explanation
-          # out then reproduced the literal a second time and it failed again.
+          # matches itself. The first version of this guard spelled the name out
+          # and required a quote followed by a non-"<" character, and rejected its
+          # own source line, because the character after the quote here is "[".
+          # Writing the explanation out then reproduced the literal a second time
+          # and it failed again. Quoting the old pattern inside this comment --
+          # the obvious way to explain the bug -- made it fail a third time,
+          # because the shape rule below is loose enough to match a mention of
+          # the shape. The pattern above is therefore described rather than
+          # written, and this comment is the sixth appearance of that lesson.
           #
           # The value is matched DIRECTLY as well as via the name-and-quote
           # shape, and that second rule is not redundant. The name-shape rule
