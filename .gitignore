@@ -28,3 +28,7 @@ build/
 dist/
 .gradle/
 *.class
+# Python bytecode: bin/e2e-browser.py is run from the repo root, so a stray
+# py_compile or an editor's indexer drops this next to the script.
+__pycache__/
+*.pyc

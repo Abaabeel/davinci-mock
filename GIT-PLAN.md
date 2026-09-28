@@ -12,7 +12,7 @@ neither is anything it contains that isn't one of the six clones).
 > What actually happened, and the places the plan was wrong:
 >
 > - **Identity.** The commit was first made under a placeholder identity I invented, then re-attributed
->   to `Abaabeel <sardar@aiden[t]ech.com>` from `~/.gitconfig` before pushing. Worth knowing that
+>   to `Abaabeel <<your-git-email>>` from `~/.gitconfig` before pushing. Worth knowing that
 >   address is a work address, not a GitHub-verified one, so GitHub may show the commit as an
 >   unverified contributor until the email is added to the account.
 > - **Credentials.** `git` had no credential helper, so the first push failed with
@@ -251,7 +251,7 @@ is on the remote as a real annotated tag (tag object `cdd234e` dereferencing to 
 Two things that had to be sorted out first:
 
 - **The commit was attributed to a placeholder identity I had invented.** `~/.gitconfig` says
-  `Abaabeel <sardar@aiden[t]ech.com>`, so the local override was dropped and the commit re-authored and
+  `Abaabeel <<your-git-email>>`, so the local override was dropped and the commit re-authored and
   re-committed as that identity before it was ever pushed. Note that address is a work address, not a
   GitHub-verified one, so GitHub may show the commit as an unverified contributor until the email is
   added to the account — worth doing if you want the attribution to link.

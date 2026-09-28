@@ -339,10 +339,19 @@ playwright install chromium --with-deps`). On failure it dumps numbered screensh
 `docs/screenshots/e2e/`.
 
 > `e2e-browser.py` clears `docs/screenshots/e2e/` at the start of every run, so a
-> committed set is always one coherent pass. Two of the nine PNGs (`08`, `09`) render a
-> runtime Claim id and a wall clock, so they differ on every green run and leave
-> `git status` dirty on exactly those two. `git checkout -- docs/screenshots/e2e/` clears
-> it. Not a regression.
+> committed set is always one coherent pass. **A green run does not reproduce the
+> committed screenshots byte-for-byte.** On a 2026-09-28 verification run, 5 of the 9
+> differed: `02-crd-card` (-360 B), `04-dtr-questionnaire` (+34 B),
+> `07-priorauth-panel` (-650 B), and the two that always differ, `08-pas-submitted` and
+> `09-pas-decision` (they render a runtime Claim id and a wall clock). `09` is the
+> least stable: on that run it came back 125 KB smaller because the expanded JSON pane
+> had not finished rendering and the frame captured `Loading...` instead of the
+> ClaimResponse. Four were byte-identical. So `git status` dirty on those files is
+> expected, not a regression — `git checkout -- docs/screenshots/e2e/` restores the
+> committed pass.
+>
+> The committed set is a *deliberately chosen* good pass, not a mechanical output, which
+> is why it is worth restoring rather than committing whatever the last run produced.
 
 ## Walkthrough: the browser path
 
@@ -497,6 +506,19 @@ the SMART `iss` the UI sends must equal the client name DTR registered, or DTR's
 launch. Both entries coexist in `/clients` after a mode switch, so flipping back and
 forth is safe.
 
+**In LAN mode, add your own address to the Keycloak client's redirect URIs.**
+`fixtures/keycloak/BurdenReduction-realm.json` ships `localhost`, `127.0.0.1` and the
+documentation address `192.0.2.10` — it deliberately does not ship a private IP, because
+one that was baked in is a fingerprint of the machine that built it. Keycloak runs with
+`KC_HOSTNAME_STRICT=false` so it will accept any host, but the realm is only imported
+when absent, so edit the client at <http://localhost:8180/admin> (or delete
+`$KEYCLOAK_HOME/data/import/BurdenReduction-realm.json` and re-run `bin/up.sh`) and add:
+
+```json
+"http://<your-lan-ip>:3005/*",
+"http://<your-lan-ip>:8080/test-ehr/*"
+```
+
 > **On a non-localhost origin the prior-auth panel targets the public PAS.**
 > `PriorAuth.jsx` picks `https://prior-auth.davinci.hl7.org/fhir` for any hostname that
 > isn't `localhost`. The endpoint field is editable and `e2e-browser.py` overwrites it
@@ -616,7 +638,7 @@ python3 bin/e2e-browser.py                 # 14/14
 | Remote browser gets 403 on `:8090` | origin not in the CORS allow-list | `env.sh` derives `CORS_ORIGINS` from global IPv4s; re-run `up.sh` after changing the network |
 | Browser lands on `chrome-error://` after "Launch DTR" | nothing listening on `:8180` | `curl :8180/realms/BurdenReduction/.well-known/openid-configuration`; `./bin/up.sh` starts Keycloak. `use_oauth: false` does **not** make the proxy optional |
 | `git push` → `could not read Username for 'https://github.com'` | `git` has no credential helper and no TTY to prompt on | `git config --local credential.helper '!gh auth git-credential'` — repo-local on purpose, so your global `~/.gitconfig` is not rewritten |
-| `git status` dirty on 2 PNGs after `e2e-browser.py` | expected: `08`/`09` render a runtime Claim id and a wall clock | `git checkout -- docs/screenshots/e2e/`; not a regression |
+| `git status` dirty on some PNGs after `e2e-browser.py` | expected: `08`/`09` always (runtime Claim id + wall clock), and `02`/`04`/`07` often. A green run does **not** reproduce the committed set byte-for-byte | `git checkout -- docs/screenshots/e2e/` to restore the committed good pass; not a regression |
 
 ## Known issues
 

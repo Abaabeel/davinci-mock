@@ -162,6 +162,6 @@ cat <<'EOF'
   itself from the QuestionnaireResponse. That path is closed now and has its
   own driver:
 
-      ~/venv/bin/python3 bin/e2e-browser.py
+      python3 bin/e2e-browser.py
 EOF
 [ "$fail" = 0 ] || exit 1

@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 try:
     from playwright.sync_api import sync_playwright, expect
 except ImportError:
-    sys.exit("playwright is not installed. Try: ~/venv/bin/python3 bin/e2e-browser.py")
+    sys.exit("playwright is not installed. Try: pip install playwright && playwright install chromium")
 
 CRG = "http://localhost:3001"
 PAS = "http://localhost:9015/fhir"

@@ -394,15 +394,16 @@ Filling C: is a shared-cost trap on that box, and the numbers are worth recordin
   disagree. Do not trust either; measure C: after compacting.
 
 To reclaim the in-filesystem space, run from **Windows** (PowerShell as Administrator) —
-this stops the stack, so do it between runs:
+this stops the stack, so do it between runs. Substitute your own WSL distro GUID; the one
+below is from the machine this was built on and is not meaningful elsewhere:
 
 ```powershell
 wsl --shutdown
 # then either:
-Optimize-VHD -Path "C:\Users\<you>\AppData\Local\wsl\{<distro-guid>}\ext4.vhdx"
+Optimize-VHD -Path "$env:LOCALAPPDATA\wsl\{<distro-guid>}\ext4.vhdx"
 # or, without the Hyper-V module:
 diskpart
-  select vdisk file="C:\Users\<you>\AppData\Local\wsl\{<distro-guid>}\ext4.vhdx"
+  select vdisk file="$env:LOCALAPPDATA\wsl\{<distro-guid>}\ext4.vhdx"
   attach vdisk readonly
   compact vdisk
   detach vdisk
@@ -429,7 +430,7 @@ diskpart
 | `up.sh` fails on a missing CDS-Library or JDK | fresh clone: `repos/` and `runtime/` are not in git | `./bin/provision.sh` (§0), then `./bin/provision.sh --check` to confirm |
 | `provision.sh` reports a SHA mismatch | someone moved a checkout in `repos/` by hand | `clone.sh`'s "already cloned" cannot detect this; take the `git fetch` line `provision.sh` prints |
 | `git push` → `could not read Username for 'https://github.com'` | `git` has no credential helper and no TTY to prompt on | `git config --local credential.helper '!gh auth git-credential'` — repo-local on purpose, so your global `~/.gitconfig` is not rewritten |
-| `git status` dirty on 2 PNGs after `e2e-browser.py` | expected: `08`/`09` render a runtime Claim id and a wall clock | `git checkout -- docs/screenshots/e2e/`; not a regression |
+| `git status` dirty on some PNGs after `e2e-browser.py` | expected: `08`/`09` always (runtime Claim id + wall clock), and `02`/`04`/`07` often. A green run does **not** reproduce the committed set byte-for-byte | `git checkout -- docs/screenshots/e2e/` to restore the committed good pass; not a regression |
 
 ## 9. Port map (for firewalls / conflicts)
 | Service | Port | What it is |
@@ -638,8 +639,8 @@ Server side, `logs/prior-auth.log`, same run — the 15 s `DELAY` timer as alway
 ### Running it
 
 ```bash
-~/venv/bin/python3 bin/e2e-browser.py            # 14 assertions, ~3 min
-~/venv/bin/python3 bin/e2e-browser.py --headed   # watch it
+python3 bin/e2e-browser.py            # 14 assertions, ~3 min
+python3 bin/e2e-browser.py --headed   # watch it
 ```
 
 Playwright 1.58 with its bundled Chromium is already in `~/venv`. On failure it
