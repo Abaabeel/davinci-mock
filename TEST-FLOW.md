@@ -67,8 +67,9 @@ Three things it deliberately does *not* do, because each has bitten this project
   manual `git` work inside `repos/`.
 
 **Pin discipline:** `versions.lock` is the run version. Do not bump a SHA to "catch up with
-upstream" without re-running both drivers in §5/§6 and making a new tag. The published run version
-is `run-2026-09-27`.
+upstream" without re-running both drivers in §5/§6 and making a new tag. No run tag is
+currently published; see [Pin discipline](#pin-discipline) in the README for why, and for the
+command that creates the next one.
 
 ## 1. Clean slate (optional but safest)
 ```bash

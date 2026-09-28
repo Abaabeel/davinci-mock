@@ -1,0 +1,176 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the scan walks full history, not just the tip
+
+      - name: Shell scripts parse
+        run: |
+          fail=0
+          for f in bin/*.sh; do
+            bash -n "$f" || { echo "::error file=$f::does not parse"; fail=1; }
+          done
+          exit $fail
+
+      - name: Python compiles
+        run: |
+          python3 -m py_compile bin/e2e-browser.py bin/provision.sh 2>/dev/null \
+            || python3 -m py_compile bin/e2e-browser.py
+          find . -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+
+      - name: JSON fixtures are valid
+        run: |
+          python3 - <<'PY'
+          import json, glob, sys
+          bad = 0
+          for f in glob.glob('fixtures/**/*.json', recursive=True):
+              try:
+                  json.load(open(f))
+                  print(f"ok   {f}")
+              except Exception as e:
+                  print(f"FAIL {f}: {e}")
+                  bad = 1
+          sys.exit(bad)
+          PY
+
+      - name: provisioner detects its own missing inputs
+        # A fresh clone has none of the 6 pinned repos, the JDK, Maven or Keycloak.
+        # --check must therefore FAIL and say so. If this ever passes on a bare
+        # checkout the provisioner is broken in the dangerous direction: it would
+        # declare an unprovisioned tree ready.
+        run: |
+          set +e
+          out=$(./bin/provision.sh --check 2>&1)
+          rc=$?
+          set -e
+          echo "$out"
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::--check passed on an unprovisioned tree; it must not"
+            exit 1
+          fi
+          echo "ok   --check correctly failed (exit $rc) on an unprovisioned tree"
+
+      - name: provisioner rejects a wrong SHA
+        # versions.lock is tab- or space-separated depending on how it was last
+        # written, so match on the 40-hex SHA at the end of the CRD line rather
+        # than assuming a delimiter.
+        run: |
+          set +e
+          cp versions.lock /tmp/versions.lock.bak
+          zeros=$(printf '0%.0s' $(seq 40))
+          sed -i -E "s/^(CRD[[:space:]]+[^[:space:]]+[[:space:]]+)[0-9a-f]{40}$/\1$zeros/" versions.lock
+          grep -qE "^CRD[[:space:]]+[^[:space:]]+[[:space:]]+$zeros\$" versions.lock \
+            || { echo "::error::test setup failed: could not corrupt the CRD pin"; exit 1; }
+          ./bin/provision.sh --check >/dev/null 2>&1
+          rc=$?
+          cp /tmp/versions.lock.bak versions.lock
+          set -e
+          [ "$rc" -ne 0 ] || { echo "::error::--check accepted a bogus SHA"; exit 1; }
+          echo "ok   --check rejected a wrong SHA (exit $rc)"
+          git diff --quiet versions.lock || { echo "::error::test left versions.lock modified"; exit 1; }
+
+      - name: No secrets or host fingerprints
+        run: |
+          # High-confidence token patterns. Deliberately requires a length after
+          # the prefix: bare 'github_pat_' as a substring appears in prose in
+          # GIT-PLAN.md, which documents the very patterns scanned for here.
+          if git ls-files -z | xargs -0 grep -nE \
+            'ghp_[A-Za-z0-9_]{30,}|github_pat_[A-Za-z0-9_]{30,}|gho_[A-Za-z0-9]{30,}|ghs_[A-Za-z0-9]{30,}|hf_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9_-]{30,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{40,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{30,}|BEGIN [A-Z ]*PRIVATE KEY'; then
+            echo "::error::possible credential committed"
+            exit 1
+          fi
+          echo "ok   no token patterns"
+
+      - name: No host or tool fingerprints
+        # sardar@aiden[t]ech.com is an intentional, documented exception: it is the
+        # repository owner's own address and they chose to keep it rather than
+        # rewrite the author metadata. It is listed in the ignore file below so
+        # that a *different* address still fails. Change the decision by editing
+        # .github/scan-allow.txt and re-authoring, not by loosening this pattern.
+        run: |
+          if git ls-files -z | xargs -0 grep -nE \
+            '/tmp/[o]pencode|172[.]22[.]71[.]96|10[.]0[.]3[.]1|FirstName[.]LastName|e58cc9c[b]' \
+            | grep -vFf .github/scan-allow.txt; then
+            echo "::error::host or tool fingerprint committed"
+            exit 1
+          fi
+          echo "ok   no host or tool fingerprints"
+
+      - name: No upstream credential reproduced
+        run: |
+          # investigation-log.md documents a hardcoded admin token in the pinned
+          # upstream PAS. The value must stay redacted; the finding is reported
+          # without it. This guard is what keeps that true.
+          if git ls-files -z | xargs -0 grep -nE 'ADMIN_TOKEN = "[^"<]' \
+            | grep -v '<redacted>'; then
+            echo "::error::an upstream credential literal is reproduced in-tree"
+            exit 1
+          fi
+          echo "ok   upstream credential values stay redacted"
+
+      - name: No fingerprints anywhere in history
+        # Commit author/committer metadata is not covered by the working-tree scan
+        # above, and the retention of one author address is a deliberate decision,
+        # so the allowlist applies here too.
+        run: |
+          if git log --all -p | grep -E \
+            '/tmp/[o]pencode|172[.]22[.]71[.]96|10[.]0[.]3[.]1|FirstName[.]LastName|sardar@aiden[t]ech' \
+            | grep -vFf .github/scan-allow.txt; then
+            echo "::error::a fingerprint is reachable in git history"
+            exit 1
+          fi
+          echo "ok   history is clean"
+
+      - name: Screenshots carry no host identifier
+        # The only leak found in review was an IP address rendered as pixels into
+        # a screenshot, which no text scan can see. tesseract + four page
+        # segmentation modes is what caught it.
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr
+          fail=0
+          for f in $(git ls-files 'docs/**/*.png'); do
+            for psm in 3 6 11 12; do
+              if tesseract "$f" - --psm $psm 2>/dev/null \
+                 | grep -qE '172[.]22[.]71[.]96|10[.]0[.]3[.]1|sardar|FirstName|[o]pencode'; then
+                echo "::error file=$f::a host identifier is readable in this image"
+                fail=1
+              fi
+            done
+          done
+          [ $fail -eq 0 ] && echo "ok   no host identifier in any screenshot"
+          exit $fail
+
+      - name: Documentation is well formed
+        run: |
+          fail=0
+          for f in $(git ls-files '*.md'); do
+            fences=$(grep -c '^```' "$f" || true)
+            if [ $((fences % 2)) -ne 0 ]; then
+              echo "::error file=$f::$fences code fences, must be even"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: README no longer claims the repository is private
+        run: |
+          if grep -rniE 'the repo(itory)? is \*\*private|should stay that way' \
+             --include='*.md' .; then
+            echo "::error::documentation still says the repository is private"
+            exit 1
+          fi
+          echo "ok   no stale private-repo claims"

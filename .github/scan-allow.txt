@@ -1,0 +1,37 @@
+# Intentional exceptions to the fingerprint scan, one literal substring per line.
+# Matched literally by `grep -F`, so they are exact strings, not regexes.
+#
+# WHY THIS FILE EXISTS
+#
+# The scan in .github/workflows/ci.yml is deliberately narrow. Every entry here
+# is a fingerprint that was found by review, judged safe on purpose, and written
+# down so the decision is visible and reversible rather than silently encoded in
+# a regex nobody reads.
+#
+# Adding a line here is a decision to publish that string. Do not add one to make
+# a red build go green without asking why it was red.
+#
+# -----------------------------------------------------------------------
+# sardar@aiden[t]ech.com
+#
+#   The repository owner's own address, and the author of all five commits.
+#   It was found during the pre-publication scrub and offered for removal; the
+#   owner chose to keep it, on the grounds that correct attribution of their own
+#   work is worth more than the address not appearing. It is a personal work
+#   mailbox, not a credential: it is not a token, it grants no access to this
+#   repository or anything else, and rotating it does not remediate anything.
+#
+#   The cost is real and is recorded here rather than discovered later: if this
+#   repository is ever made public, this address becomes world-readable and
+#   harvestable for spam and phishing, and the commits will render as coming
+#   from an unverified contributor because the address is not verified on the
+#   GitHub account.
+#
+#   To reverse the decision: rewrite the author metadata to the GitHub noreply
+#   address (Abaabeel@users.noreply.github.com, which GitHub verifies and which
+#   preserves attribution), then delete this line. That is one more
+#   `git filter-repo --email-callback` pass followed by a force-push, and it is
+#   only cheap to perform while the repository is still private. See GIT-PLAN.md
+#   section 8 for why a force-push is necessary but not sufficient on its own.
+# -----------------------------------------------------------------------
+sardar@aiden[t]ech.com

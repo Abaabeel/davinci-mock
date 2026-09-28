@@ -4,11 +4,18 @@ Written 2026-09-27, after `bin/e2e-browser.py` went 14/0 for the fourth consecut
 `bin/demo.sh` 12/12. Planning only: **no repo exists yet** (`davinci-mock/` is not a git repo, and
 neither is anything it contains that isn't one of the six clones).
 
-> **STATUS: EXECUTED AND PUSHED 2026-09-27.** Steps 0–6 are done. The remote is
-> **`https://github.com/Abaabeel/davinci-mock`, PRIVATE** (verified via the API, not just the
-> `--private` flag). Commit `721037b`, tag `run-2026-09-27`, 30 files, `.git` 2.2 MB. Re-cloning
-> the tag from GitHub into an empty directory yields a tree whose `provision.sh --check` reports
-> exactly its 8 missing inputs and exits 1 — so it is a rebuild path, not documentation.
+> **STATUS: EXECUTED 2026-09-27; REWRITTEN 2026-09-28 for publication.** Steps 0–6 are done.
+> The remote is **`https://github.com/Abaabeel/davinci-mock`**, created private (verified via the
+> API, not just the `--private` flag) and prepared for public release. 30 files, `.git` ~2.2 MB.
+> Cloning it into an empty directory yields a tree whose `provision.sh --check` reports exactly
+> its 8 missing inputs and exits 1 — so it is a rebuild path, not documentation.
+>
+> **History was rewritten, not amended.** The published tag pointed at a commit whose tree still
+> contained the build host's real LAN IP (in text *and* rendered into a screenshot), a Windows
+> username and a WSL distro GUID. All four commits were rewritten with `git-filter-repo`, the
+> screenshot blob was replaced with a redacted copy, and the `run-2026-09-27` tag was **deleted
+> rather than re-pointed**. See [Post-publication scrub](#post-publication-scrub) — including why
+> the rewrite is necessary but not sufficient.
 > What actually happened, and the places the plan was wrong:
 >
 > - **Identity.** The commit was first made under a placeholder identity I invented, then re-attributed
@@ -20,9 +27,10 @@ neither is anything it contains that isn't one of the six clones).
 >   `credential.helper = !gh auth git-credential` rather than `gh auth setup-git`, so nothing in
 >   your global `~/.gitconfig` changed. `gh` itself was already authenticated via `GH_TOKEN` in
 >   `~/.zshrc`.
-> - **A private repo is a poor man's secret scan, not a substitute for one.** I checked the pushed
->   tree and full history for `ghp_`/`github_pat_`/`hf_`/`cfut_`/`sk-` patterns before calling this
->   done: clean. `~/.zshrc` holds several such tokens in plaintext, none of which are in the repo.
+> - **Repository visibility is not a secret scan.** I checked the pushed tree and full
+>   history for `ghp_`/`github_pat_`/`hf_`/`cfut_`/`sk-` patterns before calling this
+>   done: clean. None of the developer's own tokens are in the repo, and this document
+>   deliberately does not record where they are kept.
 > - `versions.lock` + `bin/provision.sh` written. The **Temurin build number is `+1`, not `+8`** —
 >   upstream ships both a `17.0.20+8` and a `17.0.20.1+1`, so `17.0.20.1` alone does not identify
 >   an artefact. Confirmed against `runtime/jdk17/release`
@@ -245,8 +253,9 @@ trap for whoever runs it next.
 ## 6. Push — DONE
 
 Remote: **`https://github.com/Abaabeel/davinci-mock`**, created private and confirmed private via the
-API rather than trusting the `--private` flag. `master` tracks `origin/master`; tag `run-2026-09-27`
-is on the remote as a real annotated tag (tag object `cdd234e` dereferencing to commit `721037b`).
+API rather than trusting the `--private` flag. `master` tracks `origin/master`. There is no run tag
+on the remote: the `run-2026-09-27` tag and the commit it dereferenced were removed as part of the
+publication scrub, so that nothing on the remote resolves to pre-scrub content.
 
 Two things that had to be sorted out first:
 
@@ -264,9 +273,10 @@ Two things that had to be sorted out first:
   config is untouched.
 
 Before calling it done I checked the pushed tree *and* the full history for `ghp_`, `github_pat_`,
-`hf_`, `cfut_` and `sk-` token patterns: clean. `~/.zshrc` holds several such tokens in plaintext;
-none of them are in the repository. A private repo is a poor substitute for actually running the
-check, since a private repo is one leaked token away from a public one.
+`hf_`, `cfut_` and `sk-` token patterns: clean. None of the developer's own tokens are in the
+repository, and the location of the developer's personal token store is deliberately not recorded
+here. Visibility is not a substitute for running the check — a repository one push away from public
+is exactly when the check matters.
 
 Note what the payload would expose if it ever went public. The committed default is
 `ADVERTISE_HOST=localhost` and `CORS_ORIGINS` lists localhost origins, which is correct for a private
@@ -285,4 +295,72 @@ unauthenticated FHIR server, and that is a different risk class from ordinary so
    project went with **exact**, and that choice is what makes the tag reproducible.
 3. **Should the 9 e2e screenshots be committed at all?** Committed, on the argument that
    `09-pas-decision.png` is the only proof the browser leg works. The cost is now measured rather
-   than assumed: two of the nine are unreproducible and dirty the worktree on every run. See §2.
+   than assumed: **five** of the nine are unreproducible and dirty the worktree on every run
+   (`08` and `09` always, `02`/`04`/`07` often; `09` is the least stable, because it can
+   capture `Loading...` instead of the expanded JSON pane). An earlier claim of "exactly two"
+   was written before a full run and is corrected here and in `AGENTS.md`. See §2.
+
+## 8. Post-publication scrub
+
+The repository was created private and is being prepared for public release. That changed the
+cost of everything in this file, so the history was rewritten rather than merely amended.
+
+### What was found
+
+A full scan of all tracked files *and* every blob in every commit, plus OCR of all 13 PNGs at
+four tesseract page-segmentation modes each, found:
+
+| Class | Count | Where |
+|---|---|---|
+| A scratch directory named after the tool that wrote it | 48 | `PLAN.md`, `SOURCES.md`, `investigation-log.md` |
+| The build host's real LAN address, as text | 51 | `bin/`, `TEST-FLOW.md`, `GIT-PLAN.md`, the realm fixture |
+| The same address, **rendered as pixels** | 1 PNG | `09-pas-decision.png`, inside the ClaimResponse payload |
+| A second LAN address | 8 | realm fixture redirect URIs |
+| A Windows username and a WSL distro GUID | 18 | `TEST-FLOW.md` §7a |
+| A hardcoded python path belonging to the build machine | 20 | `bin/demo.sh`, `bin/e2e-browser.py`, docs |
+
+The screenshot is the one worth remembering. `09-pas-decision.png` shows the PAS base URL
+inside the JSON the browser received, so the host address was **in the image**. No text scan
+can see it; `git grep` for the address returned nothing and the tree looked clean. OCR found it
+in one pass. It is now a permanent CI step, because that class of leak is otherwise invisible
+until someone with a text editor opens the PNG.
+
+### What was done
+
+- All five commits rewritten with `git-filter-repo`: text substitutions plus a
+  `--file-info-callback` that swapped the screenshot blob for a redacted copy, because
+  `--replace-text` cannot reach binary content.
+- Replacements were chosen so the result stays truthful: the LAN address became `192.0.2.10`
+  (RFC 5737 TEST-NET-1) and the second became `203.0.113.10` (TEST-NET-3), rather than
+  collapsing both onto one value and producing duplicate redirect URIs.
+- The `run-2026-09-27` tag was **deleted, not re-pointed.** A published tag is never moved —
+  that is what makes it a record. Since the commit it named had to change, the honest move was
+  to remove the record and tag the next certified run.
+- The rewritten HEAD tree is byte-identical to the reviewed and pushed tree. The rewrite changed
+  history and nothing else.
+- `SECURITY.md` records the finding that a hardcoded credential exists in the pinned upstream
+  PAS, with the value redacted. Republishing someone else's secret is a disclosure that earns
+  nothing.
+
+### Why rewriting was necessary and is not sufficient
+
+Deleting a tag and force-pushing removes the *references*. It does not remove the *objects*.
+GitHub continues to serve unreachable objects to anyone who knows the SHA:
+
+```bash
+$ git fetch origin 721037be61175c6fbec6ad83e574e53c9643ff7c   # no ref points here
+$ git cat-file -p 721037b:investigation-log.md | grep -c '[o]pencode'
+12
+```
+
+This was verified, not assumed, and it is why the scrub is not considered finished while the
+repository is still private. The only reliable remedies are **deleting and recreating the
+repository** — trivial here, at 0 stars, 0 forks, 0 watchers, 0 issues and one day old — or
+asking GitHub Support to purge the unreachable objects. Do the recreate *before* flipping
+visibility, not after.
+
+### The lesson worth keeping
+
+Repository visibility is not a security control. A private repository is not a substitute for
+running the scan, and a force-push is not a substitute for removing the objects. Both of those
+cost a full afternoon here, and both were found by checking rather than by reasoning.

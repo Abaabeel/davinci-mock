@@ -72,7 +72,7 @@ sweep_ports() {
     cmdline="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)"
     cwd="$(readlink -f "/proc/$p/cwd" 2>/dev/null)"
     # KEYCLOAK_HOME is a second root on purpose: keycloak is installed on ext4
-    # (/opt) because C: is 99% full, so a test keyed only on $DAVINCI_ROOT
+    # (/opt) because it can sit on a different volume, so a test keyed only on $DAVINCI_ROOT
     # classifies it as "not ours", leaves :8180 bound, and the next up.sh then
     # trips its own stale-port guard -- or worse, probes green off the zombie.
     case "$cmdline$cwd" in

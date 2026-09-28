@@ -115,7 +115,7 @@ no `healthcheck`, no `networks:`, no `restart:`.
 | 5 | dtr | `smalho01234/dtr` | 3005:3005 | — |
 | 6 | prior-auth | `smalho01234/prior-auth` | 9015:9015 | `TOKEN_BASE_URI=http://localhost:9015` |
 | 7 | prior-auth-client | `smalho01234/prior-auth-client` | 9090:9090 | — |
-| 8 | fhir-x12 | `smalho01234/fhir-x12` | 8085:8085 | `ADMIN_TOKEN=fhir-x12-secret` |
+| 8 | fhir-x12 | `smalho01234/fhir-x12` | 8085:8085 | `ADMIN_TOKEN=<image default>` |
 | 9 | fhir-x12-frontend | `smalho01234/fhir-x12-frontend` | 3015:3015 | `BACKEND_URL=http://localhost:8085/` |
 
 Image provenance problem: all untagged `latest` under a personal Docker Hub account

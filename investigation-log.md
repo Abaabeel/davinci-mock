@@ -315,7 +315,11 @@ Bundle. The only outbound HTTP in the whole application is `AuthEndpoint.getJwks
   where PAS listens. Falls back to `X-Forwarded-Proto`/`X-Forwarded-Host`.
 - **Hardcoded admin token in git**, no override:
   `AuthUtils.java` → `private static final String ADMIN_TOKEN = "<redacted>";`
-  A request with `Authorization: Bearer <that>` bypasses all auth.
+  A request with `Authorization: Bearer <that>` bypasses all auth. The literal is
+  **not reproduced here on purpose** — it is upstream's secret, not ours, and
+  republishing it in a third repository is a disclosure we get no credit for. Read it
+  out of the pinned `repos/prior-auth` checkout, or just note that it exists: the
+  finding is the *absence of an override*, which is the part that matters.
 - **Debug endpoints** (gated on `App.isDebugModeEnabled()`): `POST /fhir/debug/PopulateDatabaseTestData`
   (6 bundles + 2 ClaimItems + 2 Clients; timestamps in **2200** so seeded data is identifiable),
   `POST /fhir/debug/PopulateRules`, `GET /fhir/debug/ReleaseClaim?identifier=`,
@@ -834,7 +838,7 @@ Pinned: `CDS-Library@560403a97a4c50248713fad90314faaeeff7977d` (2024-11-18, stil
 
 ### Environment: 9p is the dominant cost, and it is not small
 
-`/mnt/c` is a **9p (DrvFs)** mount with **~11 GB free of 222 GB**. Measured, 2000 small files:
+`/mnt/c` is a **9p (DrvFs)** mount with with limited free space. Measured, 2000 small files:
 
 | filesystem | write 2000 small files |
 |---|---|

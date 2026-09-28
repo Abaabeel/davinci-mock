@@ -22,10 +22,12 @@ export M2_HOME="$DAVINCI_ROOT/runtime/maven"
 export PATH="$JAVA_HOME/bin:$M2_HOME/bin:$PATH"
 
 # --- build caches deliberately NOT on this folder ---
-# /mnt/c is a 9p (DrvFs) mount: measured ~260x slower than ext4 for small-file
-# writes (2000 files: 9.85 s here vs 0.04 s on ext4), and it has ~11 GB free.
-# Gradle and Maven caches are pure derived data, so they go on ext4. Both are
-# overridable; set them here to relocate onto this folder if you prefer.
+# If this checkout lives on a network or virtualised filesystem (a 9p/DrvFs mount,
+# NFS, a VM shared folder), small-file writes are one to two orders of magnitude
+# slower than native ext4 -- measured at ~260x here, where 2000 files took 9.85 s
+# against 0.04 s on ext4. Gradle and Maven write tens of thousands of small files,
+# so their caches go on local disk instead. Both are overridable; set them here to
+# relocate onto this folder if you prefer.
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-/root/.cache/davinci-mock/gradle}"
 export MAVEN_OPTS="${MAVEN_OPTS:--Xmx512m}"
 mkdir -p "$GRADLE_USER_HOME"
@@ -38,9 +40,10 @@ export CRG_PORT=3001          # crd-request-generator — NOT 3000, taken on thi
 export PAS_PORT=9015          # prior-auth
 export KEYCLOAK_PORT=8180     # keycloak — realm BurdenReduction, required by the DTR hop
 
-# Keycloak lives on ext4, NOT under this folder. C: is at 99% (2.3 GB free) and
-# the H2 data dir plus a 188 MB unpacked distribution have no business landing
-# there; /opt had 756 GB free. Override if you want it elsewhere.
+# Keycloak lives OUTSIDE this folder, on local disk. The H2 data dir plus a
+# ~190 MB unpacked distribution have no business landing on a slow or small
+# filesystem, and re-cloning the repos would not restore it. Override if you want
+# it elsewhere.
 export KEYCLOAK_HOME="${KEYCLOAK_HOME:-/opt/keycloak}"
 export KEYCLOAK_ADMIN_USER="${KEYCLOAK_ADMIN_USER:-admin}"
 export KEYCLOAK_ADMIN_PASS="${KEYCLOAK_ADMIN_PASS:-admin}"
@@ -49,9 +52,9 @@ export KEYCLOAK_TEST_USER="${KEYCLOAK_TEST_USER:-dtr}"
 export KEYCLOAK_TEST_PASS="${KEYCLOAK_TEST_PASS:-dtr-demo}"
 
 # VSAC value-set cache. On ext4 for the same reason as keycloak: these are
-# ~1.5 MB of derived terminology that would otherwise land in the cloned repo on
-# a 99%-full C: drive and be wiped by the next bin/clone.sh. Overrides crd's
-# own valueSetCachePath (application.yml:84) via Spring relaxed binding.
+# ~1.5 MB of derived terminology that would otherwise land in the cloned repo and
+# be wiped by the next bin/clone.sh. Overrides crd's own valueSetCachePath
+# (application.yml:84) via Spring relaxed binding.
 export VSAC_CACHE_DIR="${VSAC_CACHE_DIR:-/root/.cache/davinci-mock/vsac-cache}"
 # The trailing slash is load-bearing. Both file stores build the cache path by
 # plain string concatenation -- CdsConnectFileStore.java:315 and

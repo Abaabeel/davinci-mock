@@ -60,8 +60,9 @@ maven_dest=runtime/maven
 node_major=22
 
 # --- Keycloak 26.7.4: required by the DTR hop, and NOT in this folder ---
-# It lives at $KEYCLOAK_HOME (default /opt/keycloak) on ext4, because C: is at
-# 100% and the zip plus the H2 data dir have no business landing there.
+# It lives at $KEYCLOAK_HOME (default /opt/keycloak) on local disk: the zip plus
+# the H2 data dir have no business landing on a slow or small filesystem, and
+# re-cloning the repos would not restore it.
 # JDK 21 is mandatory and is separate: kc.sh runs $JAVA_HOME/bin/java, and
 # bin/env.sh otherwise points JAVA_HOME at JDK 17, so up.sh overrides it
 # per-service. Provisioning the *distribution* is here; the JDK 21 is a

@@ -49,7 +49,7 @@ Three things Phase 2b added to this plan:
 - **`VSAC_CACHE_DIR` must keep its trailing slash**, and a value set must never be cached
   unexpanded. Both file stores concatenate the cache path with no separator, and an unexpanded entry
   silences the error while yielding a questionnaire with zero answer options.
-- **Keycloak lives on ext4 at `/opt/keycloak`, not in this folder** (C: was 99 % full), needs JDK 21,
+- **Keycloak lives on ext4 at `/opt/keycloak`, not in this folder** (the original host's checkout volume was nearly full), needs JDK 21,
   and gave `down.sh` a second ownership root.
 
 ---

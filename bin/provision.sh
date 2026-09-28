@@ -215,7 +215,7 @@ fi
 step "4/4  Keycloak ${TOOL[keycloak_version]} + Node ${TOOL[node_major]} + JDK ${TOOL[keycloak_java_major]}"
 # =============================================================================
 # Keycloak goes to $KEYCLOAK_HOME, NOT under this folder: the zip is 177 MB and
-# C: is at 100%. Sourced so the same default as bin/env.sh applies.
+# a small or slow volume. Sourced so the same default as bin/env.sh applies.
 # shellcheck source=/dev/null
 source "$root/bin/env.sh"
 

@@ -10,9 +10,16 @@ The structure is deliberate: the fake pieces sit in `bin/`, the real ones are pi
 upstream checkouts. When the mocks need retiring, the real service drops into the same
 slot.
 
-**Run version: `run-2026-09-27`** — `bin/demo.sh` 12/12, `bin/e2e-browser.py` 14/14.
+**Run version: `versions.lock` as of this commit** — `bin/demo.sh` 12/12, `bin/e2e-browser.py`
+14/14, all six services up. `versions.lock` is the authoritative pin set; see
+[Pin discipline](#pin-discipline).
 
 ![the CRD coverage card](docs/screenshots/01-crd-card.png)
+
+> **All patient data in this repository is synthetic.** It comes from upstream's own test
+> fixtures — the familiar `Tables, Bobby` / `Quinton, Vlad` set, with invented MRNs and birth
+> dates. There is no real patient and no real PHI anywhere in this tree, including in the
+> screenshots. Please keep it that way.
 
 ---
 
@@ -49,21 +56,64 @@ prove.
 
 To stop: `./bin/down.sh` (add `--purge` to drop PAS/DTR state as well).
 
-Two notes before you start:
+---
 
-- The repository is **private**, so `git clone` needs GitHub credentials
-  (`gh auth login`, or a PAT). Without `gh`, plain `git` also needs a credential helper:
-  `git config --local credential.helper '!gh auth git-credential'`.
+## Do I need any credentials?
+
+**No.** Not one. There is nothing to sign up for, no API key to request, no account, no
+paid service, no `.env` file to fill in. Clone, run the four commands above, done.
+
+Everything the stack authenticates against is either a public upstream repository or a
+throwaway value that ships in this repo. Here is the complete list, so you can confirm that
+for yourself rather than take it on trust:
+
+| What | Value | Where it comes from | Do I need to do anything? |
+|---|---|---|---|
+| Keycloak admin | `admin` / `admin` | default in `bin/env.sh`; used once at boot to import the realm | No. Override with `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASS` if you care |
+| Keycloak demo user | `dtr` / `dtr-demo` | `fixtures/keycloak/BurdenReduction-realm.json`, the realm `bin/up.sh` imports | No. `e2e-browser.py` types it for you |
+| Keycloak client secret | `#replaceMe#` | the same fixture — a literal upstream placeholder, not a real secret | No. Nothing in the stack authenticates to Keycloak at all (see below) |
+| PAS FHIR client | none | PAS runs with `BYPASS_AUTH=true` and issues its own token from its own H2 database | No |
+| GitHub (to clone) | none | the repository is public — anonymous `git clone` just works | No |
+| VSAC API key | absent | optional. Without it, 67 value sets do not resolve, so value-set-gated CDS rules cannot fire. Everything else, including the browser path, works | No. Uncomment `VSAC_API_KEY` in `bin/env.sh` only if you want those rules |
+
+**Why the stack needs no credentials at all:** the two services that *could* require them
+have been deliberately configured not to. PAS runs with `BYPASS_AUTH=true` and keeps its own
+client table in an H2 database. CRD runs with `use_oauth: false` and `checkJwt: false`, so it
+never asks Keycloak to validate a token. Keycloak is in the stack for one reason only: the
+DTR launch does a real SMART/OIDC redirect through a login page, so the browser path is
+genuinely end-to-end rather than stubbed. The realm it serves is a local demo realm with the
+throwaway credentials above.
+
+The only genuinely external things the stack fetches are the six **public** upstream DaVinci
+repositories and their Maven/npm dependencies, all pinned to exact SHAs in `versions.lock`.
+
+> If a script ever stops you asking for something that is not in that table, treat it as a
+> bug in the script rather than something you are missing.
+
+Two notes on the drivers:
+
+- `bin/demo.sh` needs nothing beyond `python3` and `curl`.
 - `bin/e2e-browser.py` is the only thing that needs **Playwright + Chromium**:
-  `pip install playwright && playwright install chromium --with-deps`. `bin/demo.sh` has
-  no dependency beyond `python3` and `curl`. If Playwright is missing, the script says so
-  and exits rather than failing obscurely.
+  `pip install playwright && playwright install chromium --with-deps`. If Playwright is
+  missing the script says so and exits, rather than failing obscurely. The stack itself
+  runs fine without it — it is only the browser test that needs a browser.
+
+---
+
+## For AI agents
+
+`AGENTS.md` in the repository root is a self-contained playbook: point an agent at it and it
+can provision the stack, start it, verify it, and report the result without reading anything
+else or asking any questions. It also lists the traps that produce convincing but wrong
+results, so an agent does not spend a cycle rediscovering them.
 
 ---
 
 ## Contents
 
 - [Quick start](#quick-start)
+- [Do I need any credentials?](#do-i-need-any-credentials)
+- [For AI agents](#for-ai-agents)
 - [What it does](#what-it-does)
 - [The six services](#the-six-services)
 - [Requirements](#requirements)
@@ -79,6 +129,7 @@ Two notes before you start:
 - [Troubleshooting](#troubleshooting)
 - [Known issues](#known-issues)
 - [Security note](#security-note)
+- [Licence](#licence)
 - [Further reading](#further-reading)
 
 ---
@@ -153,7 +204,7 @@ system-wide. You do not need a system JDK 17.
 
 ### Reference system
 
-The certified run (`run-2026-09-27`) was green on exactly this:
+The most recent certified run was green on exactly this:
 
 | | |
 |---|---|
@@ -541,8 +592,7 @@ than broadly.
 
 Also kept deliberately **outside** the project folder, and configurable via `env.sh`:
 `KEYCLOAK_HOME` (default `/opt/keycloak`), `GRADLE_USER_HOME` and `VSAC_CACHE_DIR`
-(both under `/root/.cache/davinci-mock/`). They live on ext4 because the drive this was
-built on was at 99% full.
+(both under `/root/.cache/davinci-mock/`). They live on ext4 because the original build volume was nearly full.
 
 **This repo carries no upstream patches.** Verified across all six clones: no tracked
 modifications, no untracked files. The customisations are entirely in the CDS-Library
@@ -565,11 +615,16 @@ fixtures/
   order-sign-prefetch.json          the verified demo hook request (pat013 / devreq037)
   keycloak/BurdenReduction-realm.json   realm, 26 SMART client scopes, dtr/dtr-demo
 docs/screenshots/   4 curated PNGs + a 9-frame e2e pass
+AGENTS.md           playbook for an AI agent: provision, start, verify, report, stop
+CONTRIBUTING.md     what CI checks and why
+SECURITY.md         what is not a finding, how to report, and why force-push is not erasure
+LICENSE             MIT
+.github/workflows/ci.yml   lint, pin, secret, history and screenshot-OCR guards
 PLAN.md             the plan, the 16-item fix list, and every phase result
 TEST-FLOW.md        the step-by-step runbook — start here if this README is not enough
 SOURCES.md          provenance for every claim in PLAN.md, access date 2026-09-26
 investigation-log.md   raw findings, including the corrections and the dead ends
-GIT-PLAN.md         what is in git and why, and the run-version tag scheme
+GIT-PLAN.md         what is in git and why, the run-version scheme, and the scrub
 ```
 
 ## Pinned versions
@@ -602,14 +657,21 @@ From `versions.lock`. Editing a SHA is a change to the run version — see
 upstream". Changing a line there means: re-run both drivers, then make a new annotated tag
 `run-YYYY-MM-DD`.
 
-The published run version is **`run-2026-09-27`**, an annotated tag — deliberately not a
-branch. A branch implies the stack moves forward and can be moved to; it cannot, without
-a deliberate re-pin of six SHAs plus a JDK and a Keycloak version. A tag says exactly one
-thing: *this commit is the version that ran green*, and its message carries the evidence.
+The run-version scheme is one annotated tag, `run-YYYY-MM-DD`, deliberately not a branch. A
+branch implies the stack moves forward and can be moved to; it cannot, without a deliberate
+re-pin of six SHAs plus a JDK and a Keycloak version. A tag says exactly one thing: *this commit
+is the version that ran green*, and its message carries the evidence.
 
 ```bash
-git clone --branch run-2026-09-27 https://github.com/Abaabeel/davinci-mock.git
+git tag -a run-$(date +%F) -m "6 services boot; demo.sh 12/12; e2e-browser.py 14/14" <commit>
 ```
+
+> **There is currently no run tag published.** The `run-2026-09-27` tag was removed during the
+> pre-publication scrub, because it pointed at a commit whose tree still carried the build
+> host's real LAN IP and a scratch path naming the tool that wrote it. The commit's content
+> was rewritten; the tag was deleted rather than re-pointed, so that no reference anywhere
+> resolves to a commit that GitHub can still serve by SHA. Tag the next certified run with the
+> command above. A published tag is never moved — that is the entire point of it.
 
 The minimum that has to stay green for a release to be a run version:
 
@@ -637,7 +699,7 @@ python3 bin/e2e-browser.py                 # 14/14
 | UI loads but every request fails **from another machine only** | the `REACT_APP_*` values never reached crg, so it fell back to the `localhost` URLs baked into the bundle at build time | `curl :3001/env-config` must name `$ADVERTISE_HOST`; restart with `ADVERTISE_HOST=<ip> ./bin/up.sh` |
 | Remote browser gets 403 on `:8090` | origin not in the CORS allow-list | `env.sh` derives `CORS_ORIGINS` from global IPv4s; re-run `up.sh` after changing the network |
 | Browser lands on `chrome-error://` after "Launch DTR" | nothing listening on `:8180` | `curl :8180/realms/BurdenReduction/.well-known/openid-configuration`; `./bin/up.sh` starts Keycloak. `use_oauth: false` does **not** make the proxy optional |
-| `git push` → `could not read Username for 'https://github.com'` | `git` has no credential helper and no TTY to prompt on | `git config --local credential.helper '!gh auth git-credential'` — repo-local on purpose, so your global `~/.gitconfig` is not rewritten |
+| `git push` → `could not read Username for 'https://github.com'` | pushing needs credentials, and `git` has no helper and no TTY to prompt on | `gh auth login`, or `git config --local credential.helper '!gh auth git-credential'`. Repo-local on purpose, so your global `~/.gitconfig` is not rewritten. *Cloning needs none of this — the repository is public.* |
 | `git status` dirty on some PNGs after `e2e-browser.py` | expected: `08`/`09` always (runtime Claim id + wall clock), and `02`/`04`/`07` often. A green run does **not** reproduce the committed set byte-for-byte | `git checkout -- docs/screenshots/e2e/` to restore the committed good pass; not a regression |
 
 ## Known issues
@@ -682,17 +744,35 @@ silently failing to commit. `TEST-FLOW.md` §13 has the full account.
 
 ## Security note
 
-The repo is **private** and should stay that way while the stack exists. The moment it is
-up, all six ports are bound to `0.0.0.0` — including a mock FHIR server and a PAS running
-with `BYPASS_AUTH=true`. The Keycloak demo credentials are `admin`/`admin` and
-`dtr`/`dtr-demo`, and the realm ships a client secret of `#replaceMe#`. Your host
-firewall is the only thing stopping a second machine from reaching any of it.
+**This stack is a demonstration, not a deployment.** It is not hardened and is not meant to
+be. The things to know before you point anything at it:
 
-These are scripts rather than secrets, but this is a working recipe for an
-unauthenticated FHIR server, which is a different risk class from ordinary source.
+- **All six ports bind `0.0.0.0`.** That includes a mock FHIR server and a PAS running with
+  `BYPASS_AUTH=true`, which will accept and adjudicate a claim from anyone who can reach it.
+  `bin/env.sh` adds every local interface address to the CORS allow-list so LAN access works
+  out of the box. Your host firewall is the only control between it and the network.
+- **The Keycloak credentials are `admin`/`admin` and `dtr`/`dtr-demo`**, and the realm's
+  client secret is the literal string `#replaceMe#`. They are published deliberately, because
+  the alternative — making every reader generate their own — buys nothing for a local demo and
+  costs a lot of friction. Do not reuse any of them anywhere, and do not expose this stack to
+  an untrusted network.
+- **All patient data is synthetic.** It comes from upstream's own test fixtures — the
+  familiar `Tables, Bobby` / `Quinton, Vlad` set, with `pat013`, a 1956 birth date and
+  invented MRNs. No real patient, no real PHI. Please keep it that way: do not paste a real
+  dataset into `fixtures/` or into a screenshot.
+- **The scripts are a working recipe for an unauthenticated FHIR server.** That is a
+  different risk class from ordinary source code. Treat the `bin/` directory as a thing to read
+  before you run it, not as a black box.
+- **No upstream secret is republished here.** Where this documentation had to describe a
+  credential that is hardcoded in an upstream project, the value is replaced with
+  `<redacted>` and the *finding* is what gets reported. See `investigation-log.md` and
+  `SOURCES.md`.
 
-No licence is declared in this repository or in the upstream documentation it cites; the
-upstream projects are individually licensed and none of them is redistributed here.
+## Licence
+
+MIT — see [`LICENSE`](LICENSE). No upstream DaVinci code is redistributed in this repository:
+`bin/provision.sh` clones the upstream projects from their own repositories at pinned SHAs, so
+the upstream licences apply to them and not here.
 
 ## Further reading
 
@@ -707,7 +787,15 @@ upstream projects are individually licensed and none of them is redistributed he
 - **`SOURCES.md`** — where every claim came from, with access date 2026-09-26, plus the
   upstream compose inventory and the image-provenance problems that make the Docker path
   a bad reference.
-- **`GIT-PLAN.md`** — what is in git and why, and the run-version tag scheme.
+- **`GIT-PLAN.md`** — what is in git and why, the run-version tag scheme, and the
+  publication scrub: what was found, what was rewritten, and why rewriting a tag's commit is
+  necessary but not sufficient.
+- **`AGENTS.md`** — the agent playbook. Self-contained: provision, start, verify, report, stop,
+  plus the ten traps that produce convincing but wrong results.
+- **`CONTRIBUTING.md`** — what CI checks and why, including why screenshots are OCR'd.
+- **`SECURITY.md`** — what is *not* a finding (the demo credentials are the design), how to
+  report, and why a force-push does not erase a secret.
+- **`LICENSE`** — MIT. No upstream DaVinci code is redistributed here.
 
 Upstream: [prior-auth](https://github.com/HL7-DaVinci/prior-auth) ·
 [CRD](https://github.com/HL7-DaVinci/CRD) ·
